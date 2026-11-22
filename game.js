@@ -1,4 +1,5 @@
-export const streetsX=[150,480,840,1170,1530], streetsY=[150,470,810,1130];
+export const streetsX=[150,480,840,1170,1530];
+export const streetsY=[150,470,810,1130];
 export const cargo={
   parcel:['Посылка','Лёгкая коробка позволяет разогнаться до максимума.'],
   cake:['Торт','Сбрасывай скорость перед поворотом, чтобы торт не накренился.'],
@@ -43,18 +44,11 @@ export const target=r=>r.loaded?r.j.end:r.j.start;
 export function impact(r,v,levels){
  if(r.cool>0||v<30)return;
  r.hit=true;r.hits++;r.cool=.85;
- if(r.loaded)r.hp=clamp(r.hp-v*(r.j.type==='tank'?.24:r.j.type==='vase'?.17:.09)/(1+levels.guard*.32),0,100)
-}
-export function traffic(time){
- return Array.from({length:10},(_,i)=>{
- const horizontal=i<6, dir=i%2?1:-1, size=horizontal?1680:1280;
- const p=((i*217+time*(62+i*2)*dir)%size+size)%size;
- return horizontal?{x:p,y:streetsY[i%4]+dir*18,a:dir>0?0:Math.PI}:{x:streetsX[i%5]-dir*18,y:p,a:dir*Math.PI/2}
- });
+ if(r.loaded)r.hp=clamp(r.hp-v*(r.j.kind==='Хрупкий заказ'?1.35:1)*(r.j.type==='tank'?.24:r.j.type==='vase'?.17:.09)/(1+levels.guard*.32),0,100)
 }
 export function step(r,input,dt,levels,cars=[]){
  if(r.done)return;
- r.t+=dt;r.cool=Math.max(0,r.cool-dt);r.hit=false;
+ if(!r.free||r.loaded)r.t+=dt;r.cool=Math.max(0,r.cool-dt);r.hit=false;
  const c=Math.cos(r.a),s=Math.sin(r.a),type=r.loaded?r.j.type:'parcel';
  let forward=r.vx*c+r.vy*s,side=-r.vx*s+r.vy*c;
  const verge=edge(r.x,r.y)>0,heavy=type==='fridge',hand=input.hand,turn=input.turn||0;
@@ -65,7 +59,7 @@ export function step(r,input,dt,levels,cars=[]){
  forward*=Math.exp(-(verge?1.25/(1+.2*levels.suspension):.20)*dt-(hand?.94*dt:0));
  forward=clamp(forward,-75,(type==='parcel'?292:255)+levels.engine*28);
  r.a+=turn*clamp(Math.abs(forward)/64,0,1)*Math.sign(forward)*(hand?3.3:2.32)*dt;
- side*=Math.exp(-(hand?1.6:(r.j.weather==='дождь'?4.5:8)+levels.grip*1.8)*dt);
+ side*=Math.exp(-(hand?1.6:(r.j?.weather==='дождь'?4.5:8)+levels.grip*1.8)*dt);
  // Carry lateral momentum as the front wheels change heading.
  const nc=Math.cos(r.a),ns=Math.sin(r.a),follow=clamp(dt*(hand?1.4:5+levels.grip),0,1);
  r.vx=(c+(nc-c)*follow)*forward-s*side;r.vy=(s+(ns-s)*follow)*forward+c*side;
@@ -81,6 +75,7 @@ export function step(r,input,dt,levels,cars=[]){
  if(type==='vase')wear+=Math.max(0,stress-.55)*6+(input.brake&&r.speed>90?2:0);
  if(verge&&r.speed>55)wear+=(type==='vase'?8:1.8)/(1+levels.suspension*.45);
  if(r.loaded)r.hp=Math.max(0,r.hp-wear*dt/(1+levels.guard*.32));
+ if(!r.j)return;
  const [tx,ty]=target(r);
  if(r.t>=r.j.time||r.hp<=0)r.done='fail';
  else if(Math.hypot(tx-r.x,ty-r.y)<44&&r.speed<95){if(r.loaded)r.done='success';else r.loaded=true}
@@ -91,5 +86,6 @@ export function result(r){
 }
 export function settle(s,r){
  if(r.done!=='success'||r.paid)return;r.paid=true;const v=result(r);s.money+=v.pay;
+ if(r.free)return;
  const old=s.best[r.j.id];if(!old||v.score>old.score||v.score===old.score&&v.time<old.time)s.best[r.j.id]={score:v.score,time:v.time}
 }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {jobs,cargo,start,fresh,step,result,impact,buy,cost,loadSave,settle,traffic,edge} from '../game.js';
+import {jobs,cargo,start,fresh,step,result,impact,buy,cost,loadSave,settle,edge} from '../game.js';
 const levels=fresh().levels, dt=1/60;
 for(const j of jobs)test('Рейс '+(j.id+1)+' · '+j.name,()=>{
  const r=start(j);
@@ -39,7 +39,7 @@ test('Обочина, подвеска, стены и трафик',()=>{
  const r=start(jobs[0]);r.x=620;r.y=532;r.vx=150;r.loaded=true;
  assert.ok(edge(r.x,r.y)>0);const better={...r};step(r,{},dt,levels);step(better,{},dt,{...levels,suspension:3});assert.ok(better.hp>r.hp&&better.speed>r.speed);
  r.vy=140;r.y=537;step(r,{},dt,levels);assert.ok(r.hit);
- const c=start(jobs[0]);step(c,{},dt,levels,[{x:c.x,y:c.y}]);assert.ok(c.hit);assert.notDeepEqual(traffic(0),traffic(1))
+ const c=start(jobs[0]);step(c,{},dt,levels,[{x:c.x,y:c.y}]);assert.ok(c.hit)
 });
 test('Гараж, сохранения и повторный запуск',()=>{
  const s=fresh();assert.equal(buy(s,'grip'),false);s.money=3000;for(let l=0;l<3;l++){const old=s.money;assert.ok(buy(s,'grip'));assert.equal(old-s.money,cost(l))}assert.equal(buy(s,'grip'),false);
