@@ -20,7 +20,7 @@ export const jobs=[
 ].map(([name,type,place,start,end,time,pay,weather],id)=>({id,name,type,place,start,end,time,pay,weather}));
 export const parts={engine:'Двигатель',brakes:'Тормоза',suspension:'Подвеска',grip:'Сцепление',guard:'Защита груза'};
 export const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
-export function fresh(){return {money:0,levels:Object.fromEntries(Object.keys(parts).map(k=>[k,0])),best:{},sfx:.65,music:.32}}
+export function fresh(){return {money:0,levels:Object.fromEntries(Object.keys(parts).map(k=>[k,0])),best:{},sfx:.65,music:.32,controls:{scheme:"wheel",sensitivity:1,size:1,opacity:.85,swap:false,auto:false}}}
 export function loadSave(raw){
  const s=fresh();
  try{const d=JSON.parse(raw); if(!d)return s;
@@ -28,6 +28,10 @@ export function loadSave(raw){
  s.money=Math.floor(num(d.money,0,0,1e9));
  for(const k in parts)s.levels[k]=Math.floor(num(d.levels?.[k],0,0,3));
  for(const j of jobs){const b=d.best?.[j.id];if(b&&Number.isInteger(b.score)&&Number.isFinite(b.time))s.best[j.id]={score:num(b.score,0,0,100),time:num(b.time,0,0,j.time)}}
+ const opt=d.controls||{};
+ s.controls.scheme=opt.scheme==='buttons'?'buttons':'wheel';
+ for(const [k,min,max] of [['size',.85,1.15],['opacity',.45,1],['sensitivity',.7,1.6]])s.controls[k]=num(opt[k],s.controls[k],min,max);
+ for(const k of ['auto','swap'])s.controls[k]=opt[k]===true;
  for(const k of ['music','sfx'])s[k]=num(d[k],s[k],0,1);
  }catch{}return s;
 }
