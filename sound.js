@@ -85,14 +85,14 @@ export class Sound {
     this.music.gain.setTargetAtTime(this.musicVolume, this.ctx.currentTime, 0.025)
   }
 
-  drive(speedNormalized, throttle, braking, drifting) {
+  drive(speedNormalized, throttle, braking, drifting, pitchScale = 1) {
     if (!this.ctx || this.ctx.state !== 'running') return
     const now = this.ctx.currentTime
     const speed = clamp(Math.abs(speedNormalized))
     const gas = clamp(throttle)
     const gear = Math.min(3, Math.floor(speed * 4))
     const revs = 38 + speed * 100 - gear * 15 + gas * 14
-    this.engine.frequency.setTargetAtTime(revs, now, 0.09)
+    this.engine.frequency.setTargetAtTime(revs * pitchScale, now, 0.09)
     this.engineGain.gain.setTargetAtTime(0.032 + speed * 0.045 + gas * 0.025, now, 0.06)
     this.engineFilter.frequency.setTargetAtTime(190 + speed * 300 + gas * 140, now, 0.09)
     const slip = speed * Math.max(clamp(braking) * 0.45, clamp(drifting))

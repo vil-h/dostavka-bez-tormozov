@@ -1,3 +1,4 @@
+import {vehicles} from './vehicles.js';
 import {streetsX,streetsY,jobs,cargo,start,result,settle} from './game.js';
 const stops=[
  ['Депо',480,490],['Газетный киоск',660,490],['Почтамт',840,490],['Дом печати',1010,490],
@@ -24,7 +25,7 @@ export function makeOffer(r,rng=Math.random){
  const type=pick(kind==='Хрупкий заказ'?['vase','tank','cake']:Object.keys(cargo),rng);
  const length=routeLength(from,to);
  const cruise=type==='fridge'?85:type==='vase'||type==='cake'?92:110;
- const time=Math.ceil((14+length/cruise*2.3)*(kind==='Срочная доставка'?.80:1));
+ const time=Math.ceil((14+length/(cruise*Math.min(1,vehicles[r.model].top))*2.3)*(kind==='Срочная доставка'?.80:1));
  const pay=Math.round((165+length*.25+(type==='parcel'?0:60))*(kind==='Обычная доставка'?1:1.3));
  return {kind,name:kind,type,from:from[0],place:to[0],start:from.slice(1),end:to.slice(1),time,pay,weather:'ясно'};
 }

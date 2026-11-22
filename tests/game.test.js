@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {jobs,cargo,start,fresh,step,result,impact,buy,cost,loadSave,settle,edge} from '../game.js';
 const levels=fresh().levels, dt=1/60;
-for(const j of jobs)test('Рейс '+(j.id+1)+' · '+j.name,()=>{
- const r=start(j);
+for(const model of ['van','hatch','coupe','pickup'])for(const j of jobs)test(model+' · Рейс '+(j.id+1)+' · '+j.name,()=>{
+ const r=start(j);r.model=model;
  // Follow marked road lanes. Slow down at the pickup, corner and destination.
  const path=[j.start,[j.end[0],j.start[1]],j.end];
  let i=0;
