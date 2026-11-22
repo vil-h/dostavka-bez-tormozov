@@ -1,3 +1,4 @@
+import {bindPedals} from './input.js';
 import {freeRide,dispatch,acceptOffer,skipOffer,closeDelivery,createTraffic,advanceTraffic,green} from './city.js';
 import {drawCity,drawCar,drawHero} from './art.js';
 import {Sound} from './sound.js';
@@ -14,7 +15,6 @@ const keys=new Set(),pointers=new Map();
 const has=k=>keys.has(k)||[...pointers.values()].includes(k);
 const fmt=t=>Math.floor(t/60)+':'+String(Math.floor(t%60)).padStart(2,'0');
 const number=i=>String(i+1).padStart(2,'0');
-const nextJob=()=>jobs.find(j=>!state.best[j.id])||jobs.at(-1);
 const available=j=>j.id===0||!!state.best[j.id-1];
 const button=(label,action,cls='',disabled=false)=>'<button class="'+cls+'" data-action="'+action+'" '+(disabled?'disabled':'')+'>'+label+'</button>';
 function shell(content,foot=''){
@@ -57,10 +57,7 @@ $('accept').onclick=()=>answer(true);$('skip').onclick=()=>answer(false);
 const bindings={ArrowUp:'gas',KeyW:'gas',ArrowDown:'brake',KeyS:'brake',ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right',Space:'hand'};
 addEventListener('keydown',e=>{if(!e.repeat&&scene==='drive'&&run.offer&&['KeyE','KeyQ'].includes(e.code)){answer(e.code==='KeyE');e.preventDefault();return}if(e.code==='Escape'&&!e.repeat){if(scene==='pause'){sound.unlock();resume()}else pause()}if(scene==='drive'&&bindings[e.code]){e.preventDefault();keys.add(bindings[e.code])}});
 addEventListener('keyup',e=>keys.delete(bindings[e.code]));
-for(const b of document.querySelectorAll('[data-key]')){
- b.onpointerdown=e=>{e.preventDefault();b.setPointerCapture(e.pointerId);pointers.set(e.pointerId,b.dataset.key);b.classList.add('held');sound.unlock()};
- b.onlostpointercapture=b.onpointercancel=b.onpointerup=e=>{pointers.delete(e.pointerId);b.classList.remove('held')};
-}
+bindPedals(document.querySelectorAll('[data-key]'),pointers,()=>sound.unlock());
 addEventListener('blur',pause);document.addEventListener('visibilitychange',()=>{if(document.hidden){pause();sound.suspend()}});
 function updateHud(){
  const r=run,j=r.j,showTimer=j&&(!r.free||r.loaded);
