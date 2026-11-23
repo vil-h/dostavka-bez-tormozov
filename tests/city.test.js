@@ -11,7 +11,7 @@ test('Свободная езда без дедлайна, штрафа или �
 test('2000 заказов на дорогах, четыре категории, пять грузов и запас времени',()=>{
  const r=freeRide(),rng=sequence(),types=new Set(),kinds=new Set();r.offersSeen=1;
  for(let n=0;n<2000;n++){const j=makeOffer(r,rng);types.add(j.type);kinds.add(j.kind);
- for(const [x,y] of [j.start,j.end])assert.ok(edge(x,y)<=0&&x>0&&y>0&&x<1680&&y<1280);
+ for(const [x,y] of [j.start,j.end])assert.ok(edge(x,y)<=0&&x>0&&y>0&&x<8400&&y<2900);
  const len=Math.abs(j.end[0]-j.start[0])+Math.abs(j.end[1]-j.start[1]);assert.ok(j.time>len/125+8);assert.ok(len>0&&j.pay>0)}
  assert.equal(types.size,5);assert.equal(kinds.size,4)
 });

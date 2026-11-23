@@ -1,0 +1,65 @@
+const {chromium,webkit}=require('playwright');
+const fs=require('node:fs'),path=require('node:path'),assert=require('node:assert/strict');
+const [engine='chromium',live]=process.argv.slice(2),out=path.resolve(process.env.QA_OUTPUT||'qa-results'),url=live||'http://contest.test/';
+(async()=>{fs.mkdirSync(out,{recursive:true});const {events}=await import('../challenges.js');const b=await ({chromium,webkit})[engine].launch();try{
+ const ctx=await b.newContext({viewport:{width:844,height:390},isMobile:true,hasTouch:true});const page=await ctx.newPage(),errors=[];
+ page.on('pageerror',e=>errors.push(e.message));page.setDefaultTimeout(4500);
+ if(!live)await page.route(url,r=>r.fulfill({contentType:'text/html',body:fs.readFileSync(path.join(__dirname,'../dist/index.html'),'utf8')}));
+ await page.addInitScript(()=>{if(!localStorage.getItem('dostavka-bez-tormozov.v1')) localStorage.setItem('dostavka-bez-tormozov.v1',JSON.stringify({schema:3,money:4000,levels:{guard:1},best:{0:{score:86,time:10}}}))});
+ await page.clock.install();await page.goto(url);await page.clock.pauseAt(new Date(Date.now()+2000));
+ const act=a=>page.locator('[data-action="'+a+'"]').click();
+ async function model(id){await act('garage');await act('model:'+id);if(await page.locator('[data-action=purchase]').count())await act('purchase');await act('select');await act('menu')}
+ const {highway,bends,yard,travel,outposts}=await import('../geography.js');
+ const stops=[...outposts,['Депо',480,490],['Газетный киоск',660,490],['Почтамт',840,490],['Дом печати',1010,490],['Речной рынок',150,170],['Мастерская',480,170],['Галерея',1170,170],['Порт',1530,170],['Вокзал',150,830],['Кондитерская',1170,830],['Библиотека',840,830],['Склад',480,1150],['Маяк',1530,1150]];
+ const shot=name=>page.screenshot({path:path.join(out,'world15-'+name+'.png')});
+ await model('coupe');await act('free');await page.clock.runFor(160);
+ let keys=new Set(),highest=0,fast=0,shots=new Set();
+ async function input(wanted){const next=new Set(wanted.filter(Boolean));for(const k of keys)if(!next.has(k))await page.keyboard.up(k);for(const k of next)if(!keys.has(k))await page.keyboard.down(k);keys=next}
+ async function position(){return page.evaluate(()=>{const d=document.querySelector('#mapCar').style;return {x:parseFloat(d.left)*84,y:parseFloat(d.top)*29,a:parseFloat(d.transform.split('rotate(')[1]),v:parseInt(document.querySelector('#speed').textContent)/.36}})}
+ async function drive(points,pace=175){for(const [x,y] of points){
+ for(let k=0;k<600;k++){const p=await position(),dist=Math.hypot(x-p.x,y-p.y);
+ if(dist<28)break;if(k===599)throw Error('stalled '+JSON.stringify({p,x,y}));
+ const a=Math.atan2(y-p.y,x===4400&&y===515?Math.min(210,x-p.x):x-p.x)-p.a,delta=Math.atan2(Math.sin(a),Math.cos(a));
+ const lim=Math.min(pace,Math.max(48,dist*1.22))/(1+Math.abs(delta)*.96);
+ await input([p.v<lim?'ArrowUp':p.v>lim+11?'ArrowDown':null,delta>.085?'ArrowRight':delta<-.085?'ArrowLeft':null]);
+ await page.clock.runFor(96);highest=Math.max(highest,p.v*.36);if(p.v*.36>=128)fast+=.096;
+ for(const [name,when] of [['highway',p.x>2850&&p.v*.36>=126],['industry',p.x>7830&&p.y>1250],['bends',p.x>6000&&p.y>2020]])if(when&&!shots.has(name)){await shot(name);shots.add(name)}
+ }}
+ await input([])}
+ await drive([[1500,490],[1850,515],[4400,515]],365);await page.locator('#atlas').click();await shot('map');await act('resume');
+ await drive(highway.slice(3));await drive(yard.slice(1));await drive(bends.slice(2,7));await drive(bends.slice(1,6).reverse());await drive([[8180,1600]],95);
+ // Wait at the terminal for a dispatch with pickup here. The active route is taken from the offer.
+ let destination,origin;
+ for(let n=0;n<30;n++){
+ for(let t=0;t<55&&!(await page.locator('#offer').isVisible());t++)await page.clock.runFor(1000);
+ const route=await page.locator('#route').innerText();[origin,destination]=route.split(' → ').map(q=>stops.find(p=>p[0]===q));
+ if(origin?.[0]==='Терминал № 8'&&destination?.[0]==='Весовая'){await page.locator('#accept').click();break}await page.locator('#skip').click()
+ }
+ assert.equal(origin[0],'Терминал № 8');console.log('delivery',origin[0],destination[0]);const initial=parseInt(await page.locator('#wallet').innerText());
+ await drive([origin.slice(1)],60);await page.clock.runFor(200);assert.ok((await page.locator('#order').innerText()).includes('Доставка'));
+ await drive(travel(origin,destination).via.slice(1),95);await drive([destination.slice(1)],60);await page.clock.runFor(350);assert.ok(parseInt(await page.locator('#wallet').innerText())>initial,'delivery '+await page.locator('#order').innerText());console.log('delivery reward',parseInt(await page.locator('#wallet').innerText())-initial);
+ await drive(travel(destination,stops.find(p=>p[0]==='Депо')).via.slice(1));console.log('returned',await position(),'max',highest,'seconds at 128+',fast);
+ assert.ok(highest>=129&&shots.size===3);await page.locator('#home').click();
+ for(const [width,height] of [[844,390],[740,390],[667,375],[390,844],[1280,720]]){await page.setViewportSize({width,height});await act('free');await page.locator('#atlas').click();assert.ok(await page.locator('#worldAtlas').isVisible());await act('resume');await page.locator('#home').click()}
+ async function race(id,pace){
+ const e=events[id];await act('events');await act('category:'+e.type);await act('brief:'+id);await act('startEvent:'+id);
+ assert.equal(await page.locator('#startLight').innerText(),'3');await page.clock.runFor(800);await page.locator('#pause').click();await page.clock.runFor(1600);await act('resume');await page.clock.runFor(2550);
+ let keys=new Set(),finish=false;
+ async function input(wanted){const next=new Set(wanted.filter(Boolean));for(const k of keys)if(!next.has(k))await page.keyboard.up(k);for(const k of next)if(!keys.has(k))await page.keyboard.down(k);keys=next}
+ for(let n=0;n<2400;n++){
+ const p=await page.evaluate(()=>{const dot=document.querySelector('#mapCar').style;return {x:parseFloat(dot.left)*84,y:parseFloat(dot.top)*29,a:parseFloat(dot.transform.split('rotate(')[1]),speed:parseInt(document.querySelector('#speed').textContent)/.36,progress:document.querySelector('#wallet').textContent,guide:document.querySelector('#guide').textContent,done:document.querySelector('#hud').hidden}});
+ if(p.done){finish=true;break}
+ const i=Number((p.progress.match(/Ворота (\d+)/)||[])[1]||0);
+ let target,dist,delta;
+ const g=e.gates[i];target=[g.x+g.dx*12,g.y+g.dy*12];if((p.x-g.x)*g.dx+(p.y-g.y)*g.dy>=0)target=[g.x-g.dx*50,g.y-g.dy*50];
+ const angle=Math.atan2(target[1]-p.y,target[0]-p.x)-p.a;delta=Math.atan2(Math.sin(angle),Math.cos(angle));dist=Math.hypot(target[0]-p.x,target[1]-p.y);
+ const limit=Math.min(pace,i===e.gates.length-1?pace:Math.max(50,dist*1.1))/(1+Math.abs(delta)*.9);
+ await input([p.speed<limit?'ArrowUp':p.speed>limit+10?'ArrowDown':null,delta>.085?'ArrowRight':delta<-.085?'ArrowLeft':null]);await page.clock.runFor(80);
+ }
+ await input([]);assert.ok(finish,id+' timed out');
+ const text=await page.locator('#panel').innerText();console.log(engine,id,text.replace(/\n/g,' ').slice(0,240));
+ assert.ok(/\+[1-9]\d* ₽/.test(text));await act('menu');return text
+ }
+ await race('express',295);await race('serp',270);await page.reload();const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('dostavka-bez-tormozov.v1')));assert.ok(stored.records.express.time.value>0&&stored.records.serp.time.value>0);await act('events');await act('category:records');assert.ok((await page.locator('.scorelist').innerText()).includes('Молния'));await act('menu');
+ assert.deepEqual(errors,[]);console.log(engine,'PASS');
+ }finally{await b.close()}})().catch(e=>{console.error(e);process.exitCode=1});

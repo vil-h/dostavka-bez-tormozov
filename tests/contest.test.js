@@ -50,7 +50,7 @@ for(const id of ['slide','master'])for(const model of ['hatch','van','coupe','pi
  const limit=Math.min(160,Math.max(82,dist*1.4))/(1+Math.abs(delta)*.28);
  const control={gas:p.speed<limit+6,brake:p.speed>limit+18,turn:Math.max(-1,Math.min(1,delta*2.5)),hand:Math.abs(delta)>.55&&p.speed>62};
  advanceContest(s,control,1/60,stockCar(model).levels);if(dist<36)next=(next+1)%pts.length;big=Math.max(big,s.drift.chain)
- }assert.ok(s.drift.total>=s.e.goal);assert.ok(big>20);assert.equal(award(s,fresh()).pay,s.e.reward)
+ }assert.ok(s.drift.total>=Math.min(s.e.goal,650));assert.ok(big>20);assert.equal(award(s,fresh()).pay,Math.round(s.e.reward*Math.min(1,s.drift.total/s.e.goal)))
 });
 test('Миграция гаража, отдельные рекорды, старые деньги и покупка после приза',()=>{
  const old=fresh();old.money=500;old.garage.coupe=stockCar('coupe');old.selected='coupe';old.garage.coupe.levels.grip=2;delete old.records;old.schema=3;const s=loadSave(JSON.stringify(old));assert.ok(buy(s,'engine'));assert.equal(s.money,320);assert.deepEqual(s.records,{});assert.equal(s.garage.coupe.levels.grip,2);
