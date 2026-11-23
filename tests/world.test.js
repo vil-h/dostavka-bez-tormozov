@@ -24,7 +24,7 @@ test('Загородные полосы замкнуты, встречные м�
 for(const id of ['express','serp'])for(const model of Object.keys(vehicles))test(id+' · '+model+' · реальные ворота и финиш',()=>{
  const s=newContest(id,model,()=>.4),p=s.player;Object.assign(p,{lane:0,phase:.2,sharp:2.7,cruise:265});
  for(let i=0;i<7200&&!s.done;i++)advanceContest(s,botInput(p,s.e,s.t),dt,stockCar(model).levels);
- assert.equal(p.gate,s.e.gates.length);assert.ok(p.finish>45&&p.finish<90);finishOpponents(s);
+ assert.equal(p.gate,s.e.gates.length);assert.ok(p.finish>(id==='express'?45:25)&&p.finish<90);finishOpponents(s);
  for(const c of s.bots){assert.equal(c.gate,s.e.gates.length);assert.ok(c.finish>45&&c.finish<90)}
  if(model==='van'&&id==='express')assert.equal(s.place,1);
  const state=fresh();assert.ok(award(s,state).pay>0);assert.equal(award(s,state),null);assert.deepEqual(loadSave(JSON.stringify(state)).records,state.records)

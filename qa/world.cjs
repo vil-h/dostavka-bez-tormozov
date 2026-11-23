@@ -46,22 +46,9 @@ const [engine='chromium',live]=process.argv.slice(2),out=path.resolve(process.en
  async function race(id,pace){
  const e=events[id];await act('events');await act('category:'+e.type);await act('brief:'+id);await act('startEvent:'+id);
  assert.equal(await page.locator('#startLight').innerText(),'3');await page.clock.runFor(800);await page.locator('#pause').click();await page.clock.runFor(1600);await act('resume');await page.clock.runFor(2550);
- let keys=new Set(),finish=false;
- async function input(wanted){const next=new Set(wanted.filter(Boolean));for(const k of keys)if(!next.has(k))await page.keyboard.up(k);for(const k of next)if(!keys.has(k))await page.keyboard.down(k);keys=next}
- for(let n=0;n<2400;n++){
- const p=await page.evaluate(()=>{const dot=document.querySelector('#mapCar').style;return {x:parseFloat(dot.left)*84,y:parseFloat(dot.top)*29,a:parseFloat(dot.transform.split('rotate(')[1]),speed:parseInt(document.querySelector('#speed').textContent)/.36,progress:document.querySelector('#wallet').textContent,guide:document.querySelector('#guide').textContent,done:document.querySelector('#hud').hidden}});
- if(p.done){finish=true;break}
- const i=Number((p.progress.match(/Ворота (\d+)/)||[])[1]||0);
- let target,dist,delta;
- const g=e.gates[i];target=[g.x+g.dx*12,g.y+g.dy*12];if((p.x-g.x)*g.dx+(p.y-g.y)*g.dy>=0)target=[g.x-g.dx*50,g.y-g.dy*50];
- const angle=Math.atan2(target[1]-p.y,target[0]-p.x)-p.a;delta=Math.atan2(Math.sin(angle),Math.cos(angle));dist=Math.hypot(target[0]-p.x,target[1]-p.y);
- const limit=Math.min(pace,i===e.gates.length-1?pace:Math.max(50,dist*1.1))/(1+Math.abs(delta)*.9);
- await input([p.speed<limit?'ArrowUp':p.speed>limit+10?'ArrowDown':null,delta>.085?'ArrowRight':delta<-.085?'ArrowLeft':null]);await page.clock.runFor(80);
- }
- await input([]);assert.ok(finish,id+' timed out');
- const text=await page.locator('#panel').innerText();console.log(engine,id,text.replace(/\n/g,' ').slice(0,240));
+ const text=await require('./drive-race.cjs')(page,e,pace);console.log(engine,id,text.replace(/\n/g,' ').slice(0,240));
  assert.ok(/\+[1-9]\d* ₽/.test(text));await act('menu');return text
  }
- await race('express',295);await race('serp',270);await page.reload();const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('dostavka-bez-tormozov.v1')));assert.ok(stored.records.express.time.value>0&&stored.records.serp.time.value>0);await act('events');await act('category:records');assert.ok((await page.locator('.scorelist').innerText()).includes('Молния'));await act('menu');
+ await race('express',295);await race('serp',270);await page.reload();const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('dostavka-bez-tormozov.v1')));assert.ok(stored.records.express151.time.value>0&&stored.records.serp151.time.value>0);await act('events');await act('category:records');assert.ok((await page.locator('.scorelist').innerText()).includes('Молния'));await act('menu');
  assert.deepEqual(errors,[]);console.log(engine,'PASS');
  }finally{await b.close()}})().catch(e=>{console.error(e);process.exitCode=1});

@@ -13,7 +13,7 @@ test('Решётка на асфальте, замороженный старт,
 });
 test('Ворота требуют порядка, нужного направления и ширины улицы',()=>{
  const s=newContest('sprint','van'),p=s.player,e=s.e;const last=e.gates.at(-1);p.x=last.x+3;p.y=last.y;assert.ok(!checkGate(p,e,last.x-3,last.y,1));const g=e.gates[0];
- p.x=g.x-1;p.y=g.y;assert.ok(!checkGate(p,e,g.x+1,g.y,1));p.x=g.x+1;p.y=g.y+70;assert.ok(!checkGate(p,e,g.x-1,p.y,1));
+ p.progress=g.s-1;p.x=g.x-1;p.y=g.y;assert.ok(!checkGate(p,e,g.x+1,g.y,1));p.x=g.x+1;p.y=g.y+70;assert.ok(!checkGate(p,e,g.x-1,p.y,1));
  p.y=g.y;assert.ok(checkGate(p,e,g.x-1,g.y,1));assert.equal(p.gate,1);assert.equal(p.finish,null)
 });
 for(const id of ['sprint','night'])test('30 стартов: все соперники проходят повороты и финиш · '+id,()=>{
