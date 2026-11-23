@@ -1,3 +1,4 @@
+import {RaceMusic} from './raceMusic.js';
 // All voices are synthesized locally. Audio starts inside the first user gesture.
 const clamp = value => Math.max(0, Math.min(1, Number(value) || 0))
 const pitch = midi => 440 * 2 ** ((midi - 69) / 12)
@@ -53,7 +54,10 @@ export class Sound {
       try { this.ctx = new Context() } catch { return }
       const ctx = this.ctx
       this.sfx = gain(ctx, ctx.destination, this.sfxVolume)
-      this.music = gain(ctx, ctx.destination, this.musicVolume)
+      const limiter=ctx.createDynamicsCompressor();limiter.threshold.value=-9;limiter.ratio.value=6;limiter.connect(ctx.destination)
+      this.music = gain(ctx, limiter, this.musicVolume)
+      this.score=new RaceMusic(ctx,this.music)
+      this.rivals=['sawtooth','triangle'].map(type=>{const volume=gain(ctx,this.sfx,0),filter=ctx.createBiquadFilter();filter.frequency.value=430;filter.connect(volume);const osc=oscillator(ctx,filter,type,65);osc.start();return {volume,osc}})
       this.engineGain = gain(ctx, this.sfx, 0)
       this.tireGain = gain(ctx, this.sfx, 0)
       this.engineFilter = ctx.createBiquadFilter()
@@ -87,7 +91,7 @@ export class Sound {
     this.music.gain.setTargetAtTime(this.musicVolume, this.ctx.currentTime, 0.025)
   }
 
-  drive(speedNormalized, throttle, braking, drifting, pitchScale = 1) {
+  drive(speedNormalized, throttle, braking, drifting, pitchScale = 1, race = false) {
     if (!this.ctx || this.ctx.state !== 'running') return
     const now = this.ctx.currentTime
     const speed = clamp(Math.abs(speedNormalized))
@@ -100,6 +104,7 @@ export class Sound {
     const slip = speed * Math.max(clamp(braking) * 0.45, clamp(drifting))
     this.tireGain.gain.setTargetAtTime(slip * 0.22, now, 0.045)
     this.tireFilter.frequency.setTargetAtTime(850 + slip * 1200, now, 0.08)
+    if(race)return
     if (this.nextBeat < now) this.nextBeat = now
     if (this.nextBeat < now + 0.10) {
       if (this.musicVolume > 0) this.playBeat(this.nextBeat)
@@ -121,11 +126,19 @@ export class Sound {
     }
   }
 
-  idle() {
+  nearby(cars,player){
+    if(!this.ctx)return;
+    this.rivals.forEach(({volume,osc},i)=>{const c=cars.find(c=>c.id===(i?'fox':'spark')),now=this.ctx.currentTime;
+    const d=c?Math.hypot(c.x-player.x,c.y-player.y):1000,attenuation=Math.max(0,1-d/600)**2;
+    volume.gain.setTargetAtTime(attenuation*(i?.12:.059),now,.08);
+    if(c&&attenuation)osc.frequency.setTargetAtTime((i?43:73)+c.speed*(i?.27:.48),now,.055)})
+  }
+  idle(keep=false) {
     if (!this.ctx) return
     const now = this.ctx.currentTime
     this.engineGain.gain.setTargetAtTime(0, now, 0.025)
     this.tireGain.gain.setTargetAtTime(0, now, 0.025)
+    this.score.stop(keep);this.rivals.forEach(r=>r.volume.gain.setTargetAtTime(0,now,.03))
     this.nextBeat = 0
     this.beat = 0
   }
@@ -149,7 +162,7 @@ export class Sound {
   }
 
   suspend() {
-    this.idle()
+    this.idle(true)
     if (this.ctx?.state === 'running') return this.ctx.suspend().catch(() => {})
   }
 }

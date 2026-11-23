@@ -1,7 +1,7 @@
 // Bundle each dependency in its own scope. The resulting page also runs via file://.
 import {readFile,writeFile,mkdir} from 'node:fs/promises';
 const read=name=>readFile(new URL(name,import.meta.url),'utf8');
-const names=['geography','routing','countryside','challenges','vehicles','art','sound','game','city','input','garage','contest','contestUI','eventArt'];
+const names=['geography','routing','countryside','challenges','vehicles','art','legends','legendArt','raceMusic','sound','game','city','input','garage','contest','contestUI','eventArt'];
 const bundleImports=code=>code.replace(/^import \{([^}]+)\} from '\.\/(\w+)\.js';$/gm,'const {$1}=$2Module;');
 const source=[];
 for(const name of names){

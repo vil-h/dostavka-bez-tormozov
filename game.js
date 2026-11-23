@@ -1,4 +1,4 @@
-import {bounds,avenue,cross,roadEdge} from './geography.js';
+import {bounds,avenue,cross,roadEdge,highway,bends} from './geography.js';
 import {restoreRecords,difficulties} from './challenges.js';
 import {vehicles,stockCar,restoreGarage} from './vehicles.js';
 export const streetsX=avenue;
@@ -19,8 +19,11 @@ export const jobs=[
  ['До закрытия','parcel','Вокзал',[150,170],[1530,830],39,530,'срочно'],
  ['Мокрый асфальт','cake','Кафе «Маяк»',[1170,1150],[150,490],48,570,'дождь'],
  ['Ночная смена','tank','Старый порт',[480,1150],[1530,170],48,630,'ночь'],
- ['Последний экспресс','vase','Галерея',[1530,1150],[150,170],47,740,'дождь']
-].map(([name,type,place,start,end,time,pay,weather],id)=>({id,name,type,place,start,end,time,pay,weather}));
+ ['Последний экспресс','vase','Галерея',[1530,1150],[150,170],47,740,'дождь'],
+ ['На полном газу','parcel','АЗС «Восток»',[840,487],[4400,482],53,760,'ясно',[765,487,0],[[840,487],[4400,482]]],
+ ['Тяжёлый маршрут','fridge','Городской склад',[8180,1490],[480,1150],138,1190,'ясно',[8180,1565,-Math.PI/2],[[8180,1490],[8180,1180],...highway.slice().reverse(),[480,470],[480,1150]]],
+ ['Последний поворот','vase','Городская галерея',[5480,2380],[1170,170],99,1380,'ясно',[5555,2372,Math.PI-.11],[...bends.slice(10),[1170,1130],[1170,170]]]
+].map(([name,type,place,start,end,time,pay,weather,spawn,via],id)=>({id,name,type,place,start,end,time,pay,weather,spawn,via}));
 export const parts={engine:'Двигатель',brakes:'Тормоза',suspension:'Подвеска',grip:'Сцепление',guard:'Защита груза'};
 export const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 export function fresh(){
@@ -58,7 +61,7 @@ export function edge(x,y){
 }
 export function start(j){
  const direction=Math.sign(j.end[0]-j.start[0])||1;
- return {j,model:"van",x:j.start[0]-80*direction,y:j.start[1],a:direction>0?0:Math.PI,vx:0,vy:0,speed:0,tilt:0,hp:100,t:0,hits:0,cool:0,loaded:false,done:'',drift:0,hit:false};
+ return {j,model:"van",x:j.spawn?.[0]??j.start[0]-80*direction,y:j.spawn?.[1]??j.start[1],a:j.spawn?.[2]??(direction>0?0:Math.PI),vx:0,vy:0,speed:0,tilt:0,hp:100,t:0,hits:0,cool:0,loaded:false,done:'',drift:0,hit:false};
 }
 export const target=r=>r.loaded?r.j.end:r.j.start;
 export function impact(r,v,levels){

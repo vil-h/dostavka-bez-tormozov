@@ -78,11 +78,11 @@ function turn(c,rng){
  c.len=Math.hypot(c.p[0]-c.ctrl[0],c.p[1]-c.ctrl[1])+Math.hypot(c.q[0]-c.ctrl[0],c.q[1]-c.ctrl[1]);
  c.d=next;c.curve=true;c.pos=0;
 }
-export function advanceTraffic(cars,dt,time,player,rng=Math.random){
+export function advanceTraffic(cars,dt,time,player,rng=Math.random,racers=[]){
  for(const c of cars){
  const dx=Math.cos(c.a),dy=Math.sin(c.a);
  const ahead=o=>{const x=o.x-c.x,y=o.y-c.y,along=x*dx+y*dy;return along>0&&along<54&&Math.abs(x*dy-y*dx)<17};
- const stop=cars.some(o=>o!==c&&ahead(o))||player&&ahead(player);
+ const stop=cars.some(o=>o!==c&&ahead(o))||player&&ahead(player)||racers.some(ahead);
  const red=!c.curve&&(c.toI===2||c.toJ===1)&&!green(c.toI,c.toJ,c.d,time);
  const limit=stop?0:red?Math.min(c.max,Math.max(0,(c.len-c.pos-5)*2)):c.curve?48:c.max;
  c.speed+=Math.max(-220*dt,Math.min(80*dt,limit-c.speed));c.pos+=c.speed*dt;
@@ -101,8 +101,9 @@ function lanePath(points){
 const lanes=[lanePath(peripheralLoop),lanePath([...peripheralLoop].reverse())];
 function roadPose(c){const lane=lanes[c.lane],s=lane.sections.find(s=>c.pos<s.base+s.len)||lane.sections[0],u=(c.pos-s.base)/s.len;c.x=s.p[0]+s.dx*u;c.y=s.p[1]+s.dy*u;c.a=Math.atan2(s.dy,s.dx)}
 export function roadTraffic(){return Array.from({length:8},(_,i)=>{const lane=i%2,c={lane,pos:lanes[lane].total*((i+.4)/8),speed:75+i*5,id:10+i};roadPose(c);return c})}
-export function advanceRoadTraffic(cars,dt,player){
+export function advanceRoadTraffic(cars,dt,player,racers=[]){
  for(const c of cars){const nearby=Math.hypot(player.x-c.x,player.y-c.y)<1700;
- c.pos=(c.pos+dt*(c.x>7720&&c.y>1100?52:c.speed))%lanes[c.lane].total;
+ const blocked=nearby&&racers.some(r=>{const dx=r.x-c.x,dy=r.y-c.y,f=dx*Math.cos(c.a)+dy*Math.sin(c.a);return f>0&&f<46&&Math.abs(dy*Math.cos(c.a)-dx*Math.sin(c.a))<20});
+ c.pos=(c.pos+(blocked?0:dt)*(c.x>7720&&c.y>1100?52:c.speed))%lanes[c.lane].total;
  c.age=(c.age||0)+dt;if(nearby||c.age>.45){roadPose(c);c.age=0}}
 }

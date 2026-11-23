@@ -1,3 +1,6 @@
+import {scores} from './raceMusic.js';
+import {legends,createLegends,moveLegends} from './legends.js';
+import {legendSprite,portrait} from './legendArt.js';
 import {guidance,pointAt} from './routing.js';
 import {bounds} from './geography.js';
 import {atlas,drawRegion} from './countryside.js';
@@ -20,7 +23,7 @@ let state=fresh(),saveWarning='';
 try{state=loadSave(localStorage.getItem(key))}catch{saveWarning='Хранилище недоступно в этом браузере.'}
 const sound=new Sound();sound.levels(state.sfx,state.music);
 function save(){try{localStorage.setItem(key,JSON.stringify(state))}catch{saveWarning='Браузер не сохранил прогресс.'}}
-let rural=[];
+let rural=[],roam=[];
 let competition=null,eventTab='race';
 let run,scene='menu',last=performance.now(),acc=0,marks=[],flash=0;
 const keys=new Set(),pointers=new Map();
@@ -31,7 +34,7 @@ const number=i=>String(i+1).padStart(2,'0');
 const available=j=>j.id===0||!!state.best[j.id-1];
 const button=(label,action,cls='',disabled=false)=>'<button class="'+cls+'" data-action="'+action+'" '+(disabled?'disabled':'')+'>'+label+'</button>';
 function shell(content,foot=''){
- $('hud').hidden=true;sound.idle();resetInput();
+ $('hud').hidden=true;sound.idle(scene==='pause'||scene==='atlas');resetInput();
 
  panel.innerHTML='<div class="wrap"><header><div class="brand"><i class="logo">≋</i> КУРЬЕРСКАЯ СЛУЖБА</div><strong class="balance">'+state.money+' ₽</strong></header>'+content+'<footer><span>'+foot+'</span><span>'+saveWarning+'</span></footer></div>';
  panel.scrollTop=0;
@@ -40,17 +43,17 @@ function shell(content,foot=''){
 const poster=()=>'<div class="poster"><canvas id="hero" width="620" height="255" aria-label="' + vehicles[state.selected].name + '"></canvas><span class="plate">' + vehicles[state.selected].name + '</span></div>';
 function menu(){
  scene='menu';run=null;competition=null;
- shell('<div class="hero"><div><span class="eyebrow">ВЕРСИЯ 1.5.2 · БЕЗ ПРАВА НА ОШИБКУ</span><h1>ДОСТАВКА<br> <em>БЕЗ ТОРМОЗОВ</em></h1><p>За рулём решаешь ты. Исследуй район или возьми заказ по пути.</p></div>'+poster()+'</div><article class="job"><small>СВОБОДНЫЙ ГОРОД</small><h3>Город в твоём распоряжении</h3><p>Езжай куда хочется. Диспетчер предложит работу в дороге.</p>'+button('Свободная езда','free','primary launch')+'</article><div class="menu">'+button('Соревнования','events')+button('Карьера · '+Object.keys(state.best).length+'/9','orders')+button('Гараж','garage')+button('Настройки','settings')+'</div>','WASD или стрелки · Пробел — ручник · Esc — пауза');
+ shell('<div class="hero"><div><span class="eyebrow">ВЕРСИЯ 1.6 · ЛЕГЕНДЫ УЛИЦ</span><h1>ДОСТАВКА<br> <em>БЕЗ ТОРМОЗОВ</em></h1><p>За рулём решаешь ты. Исследуй район или возьми заказ по пути.</p></div>'+poster()+'</div><article class="job"><small>СВОБОДНЫЙ ГОРОД</small><h3>Город в твоём распоряжении</h3><p>Езжай куда хочется. Диспетчер предложит работу в дороге.</p>'+button('Свободная езда','free','primary launch')+'</article><div class="menu">'+button('Соревнования','events')+button('Карьера · '+Object.keys(state.best).length+'/'+jobs.length,'orders')+button('Гараж','garage')+button('Настройки','settings')+'</div>','WASD или стрелки · Пробел — ручник · Esc — пауза');
 }
 function page(name,title,body,foot=''){scene=name;shell('<section class="page"><div class="cardhead"><h2>'+title+'</h2>'+button('В меню','menu')+'</div>'+body+'</section>',foot)}
 function eventPage(body){
  page('events','Соревнования',body);
  for(const el of panel.querySelectorAll('[data-course]'))drawMini(el.getContext('2d'),events[el.dataset.course]);
 }
-function openEvents(){competition=null;run=null;eventPage(eventsView(state,eventTab))}
+function openEvents(){competition=null;run=null;eventPage(button('Легенды улиц','legends')+eventsView(state,eventTab))}
 function startEvent(id){
- competition=newContest(id,state.selected,Math.random,state.difficulty);run=competition.player;cars=[];rural=[];marks=[];cityTime=0;flash=0;
- for(const bot of competition.bots){const sprite=document.createElement('canvas');sprite.width=64;sprite.height=44;drawVehicle(sprite.getContext('2d'),32,22,0,bot.model,{...stockCar(bot.model).look,color:bot.name==='Лис'?'#ff9f4b':bot.name==='Рысь'?'#dc6268':'#997acb'});bot.sprite=sprite}
+ competition=newContest(id,state.selected,Math.random,state.difficulty);run=competition.player;cars=[];rural=[];roam=[];sound.score?.stop();marks=[];cityTime=0;flash=0;
+ for(const bot of competition.bots){if(bot.name==='Лис'||bot.name==='Искра'){bot.custom=true;bot.sprite=legendSprite(bot.name==='Лис'?'fox':'spark');continue}const sprite=document.createElement('canvas');sprite.width=64;sprite.height=44;drawVehicle(sprite.getContext('2d'),32,22,0,bot.model,{...stockCar(bot.model).look,color:bot.name==='Лис'?'#ff9f4b':bot.name==='Рысь'?'#dc6268':'#997acb'});bot.sprite=sprite}
  const m=$('mapRoad').getContext('2d');if(competition.e.zone){m.drawImage(city,0,0,168,128);const [l,t,r,b]=competition.e.zone;m.fillStyle='#ffb24d45';m.strokeStyle='#ffc777';m.fillRect(l/10,t/10,(r-l)/10,(b-t)/10);m.strokeRect(l/10,t/10,(r-l)/10,(b-t)/10)}
  resume();sound.fx('count');
 }
@@ -68,6 +71,7 @@ function competitionHud(){
 function contestFrame(input,dt){
  const s=competition,d=s.drift,lastCount=Math.ceil(s.count),lastPlace=s.place,oldChain=d.chain,oldMulti=d.mult;
  advanceContest(s,input,dt,state.garage[run.model].levels);
+ if(lastCount>0&&s.count===0&&scores[s.e.id])sound.score?.start(s.e.id);
  if(lastCount!==Math.ceil(s.count))sound.fx(s.count>0?'count':'go');
  if(s.place!==lastPlace&&s.t>.5){s.notice=s.place<lastPlace?'Обгон':'Обошли';s.noticeUntil=s.t+1.2;if(s.place<lastPlace)sound.fx('pass')}
  if(!oldChain&&d.chain)sound.fx('combo');else if(d.mult>oldMulti)sound.fx('multi');else if(oldChain&&!d.chain&&run.hit)sound.fx('loss');
@@ -125,11 +129,11 @@ async function fullscreen(){
  }catch{const status=$('fullscreenStatus');if(status)status.textContent='Полный экран недоступен в этом браузере.'}
 }
 const fullButton=()=>button('На весь экран','fullscreen')+'<span id="fullscreenStatus" role="status"></span>';
-function settings(confirm=false){page('settings','Настройки',controlsForm()+'<label class="item">Сложность гонок <select id="raceDifficulty">'+Object.entries(difficulties).map(([d,v])=>'<option value="'+d+'" '+(d===state.difficulty?'selected':'')+'>'+v.name+'</option>').join('')+'</select></label>'+fullButton()+'<div class="item">'+[['sfx','Эффекты'],['music','Музыка']].map(([k,n])=>'<label>'+n+' <output id="val-'+k+'">'+Math.round(state[k]*100)+'%</output><input type="range" data-volume="'+k+'" min="0" max="100" value="'+Math.round(state[k]*100)+'"></label>').join('')+'</div><div class="actions">'+(confirm?'Удалить деньги, рекорды и улучшения? '+button('Удалить','reset','danger')+button('Отмена','settings'):button('Сбросить прогресс','confirm','danger'))+'</div>')}
+function settings(confirm=false){page('settings','Настройки','<fieldset class="jukebox"><legend>Музыка гонок</legend>'+Object.entries(scores).map(([k,v])=>button(v.name,'listen:'+k)).join('')+button('Стоп','listen:stop')+'<output id="playing"></output></fieldset>'+controlsForm()+'<label class="item">Сложность гонок <select id="raceDifficulty">'+Object.entries(difficulties).map(([d,v])=>'<option value="'+d+'" '+(d===state.difficulty?'selected':'')+'>'+v.name+'</option>').join('')+'</select></label>'+fullButton()+'<div class="item">'+[['sfx','Эффекты'],['music','Музыка']].map(([k,n])=>'<label>'+n+' <output id="val-'+k+'">'+Math.round(state[k]*100)+'%</output><input type="range" data-volume="'+k+'" min="0" max="100" value="'+Math.round(state[k]*100)+'"></label>').join('')+'</div><div class="actions">'+(confirm?'Удалить деньги, рекорды и улучшения? '+button('Удалить','reset','danger')+button('Отмена','settings'):button('Сбросить прогресс','confirm','danger'))+'</div>')}
 let cars=[],cityTime=0,shownOffer=null;
-function enterCity(r){competition=null;run=r;run.model=state.selected;cars=createTraffic();rural=roadTraffic();atlas($('mapRoad'),null,null,null,false);cityTime=0;marks=[];flash=0;resume();sound.fx('start')}
+function enterCity(r){competition=null;run=r;run.model=state.selected;cars=createTraffic();rural=roadTraffic();roam=createLegends(r);atlas($('mapRoad'),null,null,null,false);cityTime=0;marks=[];flash=0;resume();sound.fx('start')}
 function begin(id){if(!jobs[id]||!available(jobs[id]))return;enterCity(start(jobs[id]))}
-function resume(){scene='drive';panel.innerHTML='';$('hud').hidden=false;last=performance.now();acc=0;updateHud()}
+function resume(){if(competition&&competition.count===0&&scores[competition.e.id])sound.score?.start(competition.e.id,true);scene='drive';panel.innerHTML='';$('hud').hidden=false;last=performance.now();acc=0;updateHud()}
 function pause(){if(scene!=='drive')return;scene='pause';shell('<section class="page"><h2>На паузе</h2><p class="desc">'+(competition?.e.name||run.j?.name||'Свободная езда')+'</p><div class="menu">'+button('Продолжить','resume','primary')+button('Карта мира','atlas')+fullButton()+(competition?button('Заново','startEvent:'+competition.e.id):run.free?button(run.j?'Гараж после доставки':parked(run)?'Гараж':'Остановись для гаража','garage','',!parked(run)):button('Заново','go:'+run.j.id))+button('В меню','menu')+'</div></section>','Таймер остановлен.')}
 function finish(){
  scene='result';const ok=run.done==='success',v=result(run);settle(state,run);save();sound.fx(run.done);
@@ -138,7 +142,9 @@ function finish(){
 panel.addEventListener('click',e=>{
  const b=e.target.closest('[data-action]');if(!b)return;sound.unlock();const [action,arg,value]=b.dataset.action.split(':');
  if(scene==='garage'&&garageAction(action,arg,value))return;
- if(action==='events')openEvents();
+ if(action==='legends'){page('legends','Легенды улиц','<div class="legendCards">'+Object.entries(legends).map(([id,l])=>'<article><canvas width="680" height="310" data-legend="'+id+'"></canvas><small>'+l.name+' · Уличный гонщик</small><h3>'+l.car+'</h3><p>'+l.style+'</p></article>').join('')+'</div>'+button('К соревнованиям','events'));for(const cv of panel.querySelectorAll('[data-legend]'))portrait(cv,cv.dataset.legend)}
+ else if(action==='listen'){if(arg==='stop')sound.score?.stop();else sound.score?.start(arg);const out=$('playing');if(out)out.textContent=scores[arg]?.name||'Остановлено'}
+ else if(action==='events')openEvents();
  else if(action==='category'){eventTab=arg;openEvents()}
  else if(action==='difficulty'){state.difficulty=value;save();eventPage(briefing(events[arg],state))}
  else if(action==='brief')eventPage(briefing(events[arg],state));
@@ -171,10 +177,10 @@ addEventListener('keydown',e=>{if(!e.repeat&&scene==='drive'&&run.offer&&['KeyE'
 addEventListener('keyup',e=>keys.delete(bindings[e.code]));
 applyControls();bindWheel($('wheel'),wheel,()=>state.controls.sensitivity);
 bindPedals(document.querySelectorAll('[data-key]'),pointers,()=>sound.unlock());
-addEventListener('blur',pause);document.addEventListener('visibilitychange',()=>{if(document.hidden){pause();sound.suspend()}});
+addEventListener('blur',()=>{if(scene==='drive')pause();else sound.idle();if($('playing'))$('playing').textContent='Остановлено'});document.addEventListener('visibilitychange',()=>{if(document.hidden){pause();sound.suspend()}});
 function updateHud(){
  $('recover').hidden=true;$('mapCar').hidden=false;
- $('navigator').hidden=!(competition||run?.free);$('startLight').hidden=true;$('hud').classList.toggle('racing',!!competition);
+ $('navigator').hidden=!(competition||run?.free||run?.j?.via);$('startLight').hidden=true;$('hud').classList.toggle('racing',!!competition);
  if(competition){competitionHud();return}
  const r=run;const locator=$('mapCar');locator.style.left=r.x/bounds[0]*100+'%';locator.style.top=r.y/bounds[1]*100+'%';locator.style.transform='translate(-50%,-50%) rotate('+r.a+'rad)';const j=r.j,showTimer=j&&(!r.free||r.loaded);
  const distance=j?Math.round(Math.hypot(target(r)[0]-r.x,target(r)[1]-r.y)/3):0;
@@ -209,6 +215,7 @@ function draw(){
  const axis=(position,velocity,size,total)=>mobile?clamp(cam(position+velocity*(.32+.18*clamp((r.x-1600)/400,0,1)),size,total),position-size*.68,position-size*.32):cam(position+velocity*.25,size,total);
  const x=axis(r.x,r.vx,vw,bounds[0]),y=axis(r.y,r.vy,vh,bounds[1]);
  ctx.save();ctx.scale(z,z);ctx.translate(-x,-y);drawRegion(ctx,x,y,vw,vh);if(x<1680&&y<1280)ctx.drawImage(city,0,0);
+ for(const c of roam){if(Math.abs(c.x-r.x)>vw||Math.abs(c.y-r.y)>vh)continue;ctx.save();ctx.translate(c.x,c.y);ctx.rotate(c.a);ctx.drawImage(legendSprite(c.id),-38,-22,76,44);ctx.restore();ctx.fillStyle=legends[c.id].color;ctx.font='bold 10px system-ui';ctx.fillText(legends[c.id].name.toUpperCase()+(c.pass>0?' ›':''),c.x-13,c.y-23)}
  for(const m of marks){ctx.fillStyle='#23262990';ctx.fillRect(m.x,m.y,3,4)}
  for(let i=0;i<streetsX.length;i++)for(let j=0;j<streetsY.length;j++){
  if(i!==2&&j!==1)continue;
@@ -220,7 +227,7 @@ function draw(){
  if(r.j?.weather==='ночь'||competition?.e.night){ctx.fillStyle='#12193c80';ctx.fillRect(x,y,vw,vh);ctx.save();ctx.translate(r.x,r.y);ctx.rotate(r.a);ctx.fillStyle='#fff5b237';ctx.beginPath();ctx.moveTo(12,-7);ctx.lineTo(115,-36);ctx.lineTo(115,36);ctx.lineTo(12,7);ctx.fill();ctx.restore()}
  if(competition){
  drawCourse(ctx,competition.e,r,competition.t);drawTrails(ctx,competition.fx);
- for(const bot of competition.bots){ctx.save();ctx.translate(bot.x,bot.y);ctx.rotate(bot.a);ctx.drawImage(bot.sprite,-32,-22);ctx.restore()}
+ for(const bot of competition.bots){ctx.save();ctx.translate(bot.x,bot.y);ctx.rotate(bot.a);if(bot.custom)ctx.drawImage(bot.sprite,-38,-22,76,44);else ctx.drawImage(bot.sprite,-32,-22);ctx.restore()}
  }
  const gate=competition?.e.type!=='drift'?competition?.e.gates[r.gate]:null;
  const aim=gate&&!r.missed?pointAt(competition.e,r.progress+(r.off?0:230)):gate;
@@ -234,8 +241,8 @@ function draw(){
 function tick(now){if(Math.round(window.visualViewport?.width||innerWidth)!==w||Math.round(window.visualViewport?.height||innerHeight)!==h)resize();const elapsed=Math.min((now-last)/1000,.12);last=now;
  if(scene==='drive'){acc+=elapsed;smoothSteering(wheel,elapsed);const input=driveInput(has,wheel,state.controls,true);
  $('knob').style.transform='translateX('+wheel.value*wheel.radius*.8+'px)';
- while(acc>=1/60&&!run.done&&!competition?.done){acc-=1/60;if(competition){contestFrame(input,1/60);continue}const loaded=run.loaded,hp=run.hp;cityTime+=1/60;advanceTraffic(cars,1/60,cityTime,run);advanceRoadTraffic(rural,1/60,run);step(run,input,1/60,state.garage[run.model].levels,cars.concat(rural));dispatch(run,1/60);if(!loaded&&run.loaded)sound.fx('pickup');if(run.hit){sound.fx('hit');flash=.21}if(Math.floor(hp/10)>Math.floor(run.hp/10))sound.fx('damage');
+ while(acc>=1/60&&!run.done&&!competition?.done){acc-=1/60;if(competition){contestFrame(input,1/60);continue}const loaded=run.loaded,hp=run.hp;cityTime+=1/60;advanceTraffic(cars,1/60,cityTime,run,Math.random,roam);advanceRoadTraffic(rural,1/60,run,roam);const traffic=cars.concat(rural);moveLegends(roam,1/60,run,traffic);step(run,input,1/60,state.garage[run.model].levels,traffic.concat(roam));dispatch(run,1/60);if(!loaded&&run.loaded)sound.fx('pickup');if(run.hit){sound.fx('hit');flash=.21}if(Math.floor(hp/10)>Math.floor(run.hp/10))sound.fx('damage');
  if(run.drift>18){marks.push({x:run.x,y:run.y});if(marks.length>220)marks.shift()}}
- flash=Math.max(0,flash-elapsed);sound.drive(run.speed/300,input.gas&&!competition?.count,input.brake,clamp((run.drift-12)/55,0,1),vehicles[run.model].tone);draw();updateHud();if(competition?.done)endContest();else if(run.done){if(run.free){sound.fx(run.done);closeDelivery(run,state);save();updateHud()}else finish()}}
+ flash=Math.max(0,flash-elapsed);sound.drive(run.speed/300,input.gas&&!competition?.count,input.brake,clamp((run.drift-12)/55,0,1),vehicles[run.model].tone,!!scores[competition?.e.id]);sound.nearby(roam,run);draw();updateHud();if(competition?.done)endContest();else if(run.done){if(run.free){sound.fx(run.done);closeDelivery(run,state);save();updateHud()}else finish()}}
  requestAnimationFrame(tick)}
 window.visualViewport?.addEventListener('resize',resize);addEventListener('resize',resize);resize();menu();requestAnimationFrame(tick);
