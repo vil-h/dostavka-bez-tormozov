@@ -16,18 +16,20 @@ const [engine='chromium',live]=process.argv.slice(2),out=path.resolve(process.en
  let keys=new Set(),highest=0,fast=0,shots=new Set();
  async function input(wanted){const next=new Set(wanted.filter(Boolean));for(const k of keys)if(!next.has(k))await page.keyboard.up(k);for(const k of next)if(!keys.has(k))await page.keyboard.down(k);keys=next}
  async function position(){return page.evaluate(()=>{const d=document.querySelector('#mapCar').style;return {x:parseFloat(d.left)*84,y:parseFloat(d.top)*29,a:parseFloat(d.transform.split('rotate(')[1]),v:parseInt(document.querySelector('#speed').textContent)/.36}})}
- async function drive(points,pace=175){for(const [x,y] of points){
- for(let k=0;k<600;k++){const p=await position(),dist=Math.hypot(x-p.x,y-p.y);
- if(dist<28)break;if(k===599)throw Error('stalled '+JSON.stringify({p,x,y}));
- const a=Math.atan2(y-p.y,x===4400&&y===515?Math.min(210,x-p.x):x-p.x)-p.a,delta=Math.atan2(Math.sin(a),Math.cos(a));
+ async function drive(points,pace=175){const start=await position();let ax=start.x,ay=start.y;for(const [x,y] of points){
+ const length=Math.hypot(x-ax,y-ay)||1,dx=(x-ax)/length,dy=(y-ay)/length;
+ let idle=0;for(let k=0;k<600;k++){const p=await position(),dist=Math.hypot(x-p.x,y-p.y);
+ if(dist<18)break;if(k===599)throw Error('stalled '+JSON.stringify({p,x,y}));
+ idle=p.v<8?idle+1:0;if(idle>14){await input(['ArrowDown']);await page.clock.runFor(640);await input([]);idle=0;continue}
+ const along=Math.min(length,Math.max(0,(p.x-ax)*dx+(p.y-ay)*dy)+110);const a=Math.atan2(ay+dy*along-p.y,ax+dx*along-p.x)-p.a,delta=Math.atan2(Math.sin(a),Math.cos(a));
  const lim=Math.min(pace,Math.max(48,dist*1.22))/(1+Math.abs(delta)*.96);
  await input([p.v<lim?'ArrowUp':p.v>lim+11?'ArrowDown':null,delta>.085?'ArrowRight':delta<-.085?'ArrowLeft':null]);
  await page.clock.runFor(96);highest=Math.max(highest,p.v*.36);if(p.v*.36>=128)fast+=.096;
- for(const [name,when] of [['highway',p.x>2850&&p.v*.36>=126],['industry',p.x>7830&&p.y>1250],['bends',p.x>6000&&p.y>2020]])if(when&&!shots.has(name)){await shot(name);shots.add(name)}
- }}
+ for(const [name,when] of [['highway',p.x>3000&&p.x<4300&&p.y<560],['industry',p.x>7830&&p.y>1250],['bends',p.x>6000&&p.y>2020]])if(when&&!shots.has(name)){await shot(name);shots.add(name)}
+ }ax=x;ay=y;}
  await input([])}
  await drive([[1500,490],[1850,515],[4400,515]],365);await page.locator('#atlas').click();await shot('map');await act('resume');
- await drive(highway.slice(3));await drive(yard.slice(1));await drive(bends.slice(2,7));await drive(bends.slice(1,6).reverse());await drive([[8180,1600]],95);
+ await drive(highway.slice(3));await drive(yard.slice(1));await drive(bends.slice(2));await drive([[1530,470],...highway.slice(1),bends[1],yard[2]]);
  // Wait at the terminal for a dispatch with pickup here. The active route is taken from the offer.
  let destination,origin;
  for(let n=0;n<30;n++){
