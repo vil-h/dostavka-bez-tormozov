@@ -61,7 +61,20 @@ function trafficPlan(c,objects,p,gap,style){
  c.emergency=limit<c.speed-65;
  return limit;
 }
-function drive(c,dt,objects,near,rng){
+// Check relative velocity as well as lane occupancy when the courier crosses a bend.
+function yieldToCourier(c,player,target){
+ const dx=player.x-c.x,dy=player.y-c.y;
+ if(Math.abs(dx)>240||Math.abs(dy)>240)return target;
+ const a=c.motion??c.a,along=dx*Math.cos(a)+dy*Math.sin(a);
+ if(along<3)return target;
+ const rx=c.speed*Math.cos(a)-(player.vx??(player.speed||0)*Math.cos(player.a||0));
+ const ry=c.speed*Math.sin(a)-(player.vy??(player.speed||0)*Math.sin(player.a||0));
+ const closing=Math.max(1,rx*rx+ry*ry),time=(dx*rx+dy*ry)/closing;
+ if(time<0||time>1.1||Math.hypot(dx-time*rx,dy-time*ry)>32)return target;
+ const lead=(player.vx||0)*Math.cos(a)+(player.vy||0)*Math.sin(a);
+ return Math.min(target,Math.max(0,lead+1.4*(along-56)));
+}
+function drive(c,dt,objects,near,rng,player){
  const r=c.route,style=styles[c.id];
  c.s=project(r,c.x,c.y,Math.max(0,c.s-75),Math.min(r.length,c.s+90)).s;
  if(c.s>=r.length-2){c.laps++;c.route=c.id==='spark'?courses[rng()<.8?0:2]:courses[rng()<.55?1:2];c.s=0}
@@ -89,7 +102,8 @@ function drive(c,dt,objects,near,rng){
  const steer=clamp(error*style.steer-angle(c.a-c.motion)*2.2,-2.35,2.35);
  c.yaw=approach(c.yaw,steer,dt*9);
  c.a=angle(c.a+c.yaw*dt*Math.min(1,c.speed/45));
- c.speed=approach(c.speed,c.target,dt*(c.target<c.speed?(c.emergency?620:style.brake):style.accel));
+ const safeSpeed=near?yieldToCourier(c,player,c.target):c.target;
+ c.speed=approach(c.speed,safeSpeed,dt*(safeSpeed<c.speed?(c.emergency||safeSpeed<c.target?620:style.brake):style.accel));
  c.motion=angle(c.motion+angle(c.a-c.motion)*(1-Math.exp(-dt*(3+16*c.grip*c.grip))));
  c.slip=angle(c.a-c.motion);c.sideSpeed=c.speed*Math.sin(c.slip);
  c.vx=c.speed*Math.cos(c.motion);c.vy=c.speed*Math.sin(c.motion);
@@ -100,6 +114,6 @@ export function moveLegends(list,dt,player,traffic,rng=Math.random){
  for(const c of list){
   const near=Math.hypot(c.x-player.x,c.y-player.y)<1700;
   let left=dt;
-  while(left>1e-8){const frame=Math.min(left,1/60);drive(c,frame,objects,near,rng);left-=frame}
+  while(left>1e-8){const frame=Math.min(left,1/60);drive(c,frame,objects,near,rng,player);left-=frame}
  }
 }

@@ -28,5 +28,5 @@ test('При встречной машине водитель уступает �
  const c=createLegends(player)[0];c.s=1200;c.speed=200;const q=pointAt(c.route,c.s);Object.assign(c,{x:q.x,y:q.y+16,a:0});
  const slow={x:q.x+75,y:q.y+16},oncoming={x:q.x+125,y:q.y-18};
  for(let n=0;n<60;n++)moveLegends([c],1/60,{x:q.x,y:q.y+250},[slow,oncoming]);
- assert.equal(c.pass,0);assert.ok(c.speed<55);assert.ok(c.x<slow.x-24)
+ assert.ok(c.lane>13);assert.ok(c.speed<55);assert.ok(c.x<slow.x-24)
 });
