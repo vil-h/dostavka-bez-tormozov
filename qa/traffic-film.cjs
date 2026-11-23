@@ -19,7 +19,7 @@ function install(){
  };
  window.observeFilm=()=>{
   const c=roam[0];if(!c)return cars.map(o=>({x:o.x,y:o.y,flow:o.flow}));
-  Object.assign(run,{x:c.x+130*Math.sin(c.a),y:c.y-130*Math.cos(c.a),vx:0,vy:0});
+
   return {s:c.s,slip:c.slip,speed:c.speed,phase:c.driftState,tracks:streetTracks.length}
  }
 }
@@ -27,7 +27,8 @@ function install(){
  try{const p=await b.newPage({viewport:{width:844,height:390}}),errors=[];p.on('pageerror',e=>errors.push(e.message));
  await p.route(url,async r=>{const html=process.argv[2]?await(await r.fetch()).text():fs.readFileSync(path.join(root,'dist/index.html'),'utf8');
  assert.ok(html.includes('ВЕРСИЯ 1.6.2'));const code=html.replace('const x=axis(r.x,r.vx,vw,bounds[0]),y=axis(r.y,r.vy,vh,bounds[1]);','const eye=window.eye||r,x=cam(eye.x,vw,bounds[0]),y=cam(eye.y,vh,bounds[1]);');
- const at=code.lastIndexOf('</script>');await r.fulfill({contentType:'text/html',body:code.slice(0,at)+'\n('+install.toString()+')();\n'+code.slice(at)})});
+ const film=code.replace('Math.hypot(c.x-run.x,c.y-run.y)<820','Math.hypot(c.x-(window.eye||run).x,c.y-(window.eye||run).y)<820').replace('Math.abs(c.x-r.x)>vw||Math.abs(c.y-r.y)>vh','Math.abs(c.x-eye.x)>vw||Math.abs(c.y-eye.y)>vh');
+ const at=film.lastIndexOf('</script>');await r.fulfill({contentType:'text/html',body:film.slice(0,at)+'\n('+install.toString()+')();\n'+film.slice(at)})});
  await p.clock.install();await p.goto(url);await p.clock.pauseAt(new Date(Date.now()+2000));await p.locator('[data-action=free]').click();
  for(const mode of ['jam','forest','highway']){
   await p.evaluate(([m,g])=>window.startFilm(m,g),[mode,jamGrid()]);const dir=path.join(out,mode);fs.mkdirSync(dir,{recursive:true});
