@@ -5,7 +5,9 @@ const chords = [[50, 57, 60, 64], [46, 53, 57, 60], [53, 60, 64, 67], [48, 55, 5
 const melody = [null, 2, null, 1, 3, null, 2, null]
 const chimes = {
   pickup: [62, 69], success: [62, 66, 69, 74], fail: [57, 53, 50],
-  buy: [69, 74, 78], start: [57, 64, 69], damage: [85, 78]
+  buy: [69, 74, 78], start: [57, 64, 69], damage: [85, 78],
+  pass: [74, 81], combo: [64, 71], multi: [69, 76, 81], loss: [64, 57],
+  finish: [64, 69, 76], record: [76, 80, 83, 88], win: [62, 69, 74, 78, 81]
 }
 
 function gain(ctx, destination, level) {
@@ -131,7 +133,10 @@ export class Sound {
   fx(name) {
     if (!this.ctx || this.ctx.state === 'closed') return
     const now = this.ctx.currentTime
-    if (name === 'hit') {
+    if (name === 'count' || name === 'go') {
+      const go = name === 'go'
+      note(this.ctx, this.sfx, 'sine', go ? 1046 : 523, now, go ? 0.32 : 0.12, 0.19)
+    } else if (name === 'hit') {
       note(this.ctx, this.sfx, 'triangle', 140, now, 0.19, 0.33, 32)
       note(this.ctx, this.sfx, 'sawtooth', 190, now, 0.07, 0.10, 46)
     } else if (Object.hasOwn(chimes, name)) {
