@@ -43,7 +43,7 @@ function shell(content,foot=''){
 const poster=()=>'<div class="poster"><canvas id="hero" width="620" height="255" aria-label="' + vehicles[state.selected].name + '"></canvas><span class="plate">' + vehicles[state.selected].name + '</span></div>';
 function menu(){
  scene='menu';run=null;competition=null;
- shell('<div class="hero"><div><span class="eyebrow">ВЕРСИЯ 1.6.1 · УЛИЧНЫЙ ХАРАКТЕР</span><h1>ДОСТАВКА<br> <em>БЕЗ ТОРМОЗОВ</em></h1><p>За рулём решаешь ты. Исследуй район или возьми заказ по пути.</p></div>'+poster()+'</div><article class="job"><small>СВОБОДНЫЙ ГОРОД</small><h3>Город в твоём распоряжении</h3><p>Езжай куда хочется. Диспетчер предложит работу в дороге.</p>'+button('Свободная езда','free','primary launch')+'</article><div class="menu">'+button('Соревнования','events')+button('Карьера · '+Object.keys(state.best).length+'/'+jobs.length,'orders')+button('Гараж','garage')+button('Настройки','settings')+'</div>','WASD или стрелки · Пробел — ручник · Esc — пауза');
+ shell('<div class="hero"><div><span class="eyebrow">ВЕРСИЯ 1.6.2 · ДРИФТ БЕЗ ТОРМОЗОВ</span><h1>ДОСТАВКА<br> <em>БЕЗ ТОРМОЗОВ</em></h1><p>За рулём решаешь ты. Исследуй район или возьми заказ по пути.</p></div>'+poster()+'</div><article class="job"><small>СВОБОДНЫЙ ГОРОД</small><h3>Город в твоём распоряжении</h3><p>Езжай куда хочется. Диспетчер предложит работу в дороге.</p>'+button('Свободная езда','free','primary launch')+'</article><div class="menu">'+button('Соревнования','events')+button('Карьера · '+Object.keys(state.best).length+'/'+jobs.length,'orders')+button('Гараж','garage')+button('Настройки','settings')+'</div>','WASD или стрелки · Пробел — ручник · Esc — пауза');
 }
 function page(name,title,body,foot=''){scene=name;shell('<section class="page"><div class="cardhead"><h2>'+title+'</h2>'+button('В меню','menu')+'</div>'+body+'</section>',foot)}
 function eventPage(body){
@@ -214,13 +214,13 @@ function draw(){
  const mobile=w<=950&&h<=500;
  const axis=(position,velocity,size,total)=>mobile?clamp(cam(position+velocity*(.32+.18*clamp((r.x-1600)/400,0,1)),size,total),position-size*.68,position-size*.32):cam(position+velocity*.25,size,total);
  const x=axis(r.x,r.vx,vw,bounds[0]),y=axis(r.y,r.vy,vh,bounds[1]);
- ctx.save();ctx.scale(z,z);ctx.translate(-x,-y);drawRegion(ctx,x,y,vw,vh);if(x<1680&&y<1280)ctx.drawImage(city,0,0);
+ r.view={x,y,right:x+vw,bottom:y+vh};ctx.save();ctx.scale(z,z);ctx.translate(-x,-y);drawRegion(ctx,x,y,vw,vh);if(x<1680&&y<1280)ctx.drawImage(city,0,0);
  for(const track of streetTracks){
   const age=cityTime-track.time;if(age>2)continue;
   ctx.save();ctx.translate(track.x,track.y);ctx.rotate(track.a);
   for(const side of [-9,9]){
-   ctx.fillStyle='rgba(31,34,35,'+(.35*(1-age/2))+')';ctx.fillRect(-6,side,12,2);
-   if(age<.42){ctx.fillStyle='rgba(217,220,211,'+(.23*(1-age/.42))+')';ctx.beginPath();ctx.arc(-age*10,side,3+age*14,0,7);ctx.fill()}
+   ctx.fillStyle='rgba(31,34,35,'+((.22+.26*track.strength)*(1-age/2))+')';ctx.fillRect(-6,side,12,2);
+   if(age<.42){ctx.fillStyle='rgba(217,220,211,'+(.28*track.strength*(1-age/.42))+')';ctx.beginPath();ctx.arc(-age*10,side,2+track.strength*3+age*14,0,7);ctx.fill()}
   }ctx.restore()
  }
  for(const c of roam){if(Math.abs(c.x-r.x)>vw||Math.abs(c.y-r.y)>vh)continue;ctx.save();ctx.translate(c.x,c.y);ctx.rotate(c.a);ctx.drawImage(legendSprite(c.id),-38,-22,76,44);ctx.restore()}
@@ -231,7 +231,7 @@ function draw(){
  const lx=streetsX[i]-dx*49-dy*34,ly=streetsY[j]-dy*49+dx*34;
  ctx.fillStyle='#17201e';ctx.fillRect(lx-5,ly-5,10,10);ctx.fillStyle=green(i,j,d,cityTime)?'#a2f574':'#ff845b';ctx.fillRect(lx-3,ly-3,6,6)}
  }
- cars.concat(rural).filter(c=>c.x>x-50&&c.x<x+vw+50&&c.y>y-50&&c.y<y+vh+50).forEach((car,i)=>drawCar(ctx,car.x,car.y,car.a,['#87b6b1','#bea7b2','#d4bd7e'][i%3]));
+ cars.concat(rural).filter(c=>c.x>x-50&&c.x<x+vw+50&&c.y>y-50&&c.y<y+vh+50).forEach((car,i)=>drawCar(ctx,car.x,car.y,car.drawAngle??car.a,['#87b6b1','#bea7b2','#d4bd7e'][i%3]));
  if(r.j?.weather==='ночь'||competition?.e.night){ctx.fillStyle='#12193c80';ctx.fillRect(x,y,vw,vh);ctx.save();ctx.translate(r.x,r.y);ctx.rotate(r.a);ctx.fillStyle='#fff5b237';ctx.beginPath();ctx.moveTo(12,-7);ctx.lineTo(115,-36);ctx.lineTo(115,36);ctx.lineTo(12,7);ctx.fill();ctx.restore()}
  if(competition){
  drawCourse(ctx,competition.e,r,competition.t);drawTrails(ctx,competition.fx);
@@ -249,9 +249,9 @@ function draw(){
 function tick(now){if(Math.round(window.visualViewport?.width||innerWidth)!==w||Math.round(window.visualViewport?.height||innerHeight)!==h)resize();const elapsed=Math.min((now-last)/1000,.12);last=now;
  if(scene==='drive'){acc+=elapsed;smoothSteering(wheel,elapsed);const input=driveInput(has,wheel,state.controls,true);
  $('knob').style.transform='translateX('+wheel.value*wheel.radius*.8+'px)';
- while(acc>=1/60&&!run.done&&!competition?.done){acc-=1/60;if(competition){contestFrame(input,1/60);continue}const loaded=run.loaded,hp=run.hp;cityTime+=1/60;advanceTraffic(cars,1/60,cityTime,run,Math.random,roam);advanceRoadTraffic(rural,1/60,run,roam);const traffic=cars.concat(rural);moveLegends(roam,1/60,run,traffic);
+ while(acc>=1/60&&!run.done&&!competition?.done){acc-=1/60;if(competition){contestFrame(input,1/60);continue}const loaded=run.loaded,hp=run.hp;cityTime+=1/60;advanceTraffic(cars,1/60,cityTime,run,Math.random,roam.concat(rural));advanceRoadTraffic(rural,1/60,run,roam.concat(cars));const traffic=cars.concat(rural);moveLegends(roam,1/60,run,traffic);
  for(const c of roam)if(Math.abs(c.sideSpeed)>14&&Math.abs(c.slip)>.095&&cityTime-(c.lastTrack??-1)>.055&&Math.hypot(c.x-run.x,c.y-run.y)<820){
-  c.lastTrack=cityTime;streetTracks.push({x:c.x-21*Math.cos(c.a),y:c.y-21*Math.sin(c.a),a:c.a,time:cityTime});if(streetTracks.length>52)streetTracks.shift()
+  c.lastTrack=cityTime;streetTracks.push({x:c.x-21*Math.cos(c.a),y:c.y-21*Math.sin(c.a),a:c.a,strength:clamp(Math.abs(c.sideSpeed)/48,.22,1),time:cityTime});if(streetTracks.length>52)streetTracks.shift()
  }
  step(run,input,1/60,state.garage[run.model].levels,traffic.concat(roam));dispatch(run,1/60);if(!loaded&&run.loaded)sound.fx('pickup');if(run.hit){sound.fx('hit');flash=.21}if(Math.floor(hp/10)>Math.floor(run.hp/10))sound.fx('damage');
  if(run.drift>18){marks.push({x:run.x,y:run.y});if(marks.length>220)marks.shift()}}

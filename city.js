@@ -1,4 +1,5 @@
-import {outposts,travel,highway,bends,yard} from './geography.js';
+import {blockerAhead,recovery,offscreenRecovery} from './recovery.js';
+import {outposts,travel,highway,bends,yard,roadEdge} from './geography.js';
 import {vehicles} from './vehicles.js';
 import {streetsX,streetsY,jobs,cargo,start,result,settle} from './game.js';
 const stops=[
@@ -78,21 +79,51 @@ function turn(c,rng){
  c.len=Math.hypot(c.p[0]-c.ctrl[0],c.p[1]-c.ctrl[1])+Math.hypot(c.q[0]-c.ctrl[0],c.q[1]-c.ctrl[1]);
  c.d=next;c.curve=true;c.pos=0;
 }
+function bypass(c,dt,e,oldX,oldY){
+ let goal=e?e.offset:0;
+ if(goal&&roadEdge(c.x-Math.sin(c.a)*goal,c.y+Math.cos(c.a)*goal)>-10)goal=0;
+ c.shoulder=(c.shoulder||0)+Math.max(-23*dt,Math.min(23*dt,goal-(c.shoulder||0)));
+ c.x-=Math.sin(c.a)*c.shoulder;c.y+=Math.cos(c.a)*c.shoulder;
+ const dx=c.x-oldX,dy=c.y-oldY;
+ if(!e&&Math.abs(c.shoulder)<.1){c.drawAngle=c.a;return}
+ if(Math.hypot(dx,dy)>.01){
+  const heading=Math.atan2(dy,dx)+(c.speed<0?Math.PI:0),old=c.drawAngle??c.a;
+  const delta=Math.atan2(Math.sin(heading-old),Math.cos(heading-old));
+  c.drawAngle=old+Math.max(-1.8*dt,Math.min(1.8*dt,delta))
+ }
+}
 export function advanceTraffic(cars,dt,time,player,rng=Math.random,racers=[]){
  // Reserve the crossing before entry so two turning vehicles cannot deadlock nose to nose.
- const occupied=new Set(cars.filter(c=>c.curve).map(c=>c.i+','+c.j));
+ const occupied=new Map(cars.filter(c=>c.curve).map(c=>[c.i+','+c.j,c]));
+ const objects=[...cars,...racers,...(player?[player]:[])];
  for(const c of cars){
- const dx=Math.cos(c.a),dy=Math.sin(c.a);
- const ahead=o=>{const x=o.x-c.x,y=o.y-c.y,along=x*dx+y*dy;return along>0&&along<54&&Math.abs(x*dy-y*dx)<17};
- const stop=cars.some(o=>o!==c&&ahead(o)&&(!c.curve||Math.cos(o.a-c.a)>.7||Math.hypot(o.x-c.x,o.y-c.y)<26))||player&&ahead(player)||racers.some(ahead);
+ const oldX=c.x,oldY=c.y;
+ let ahead=blockerAhead(c,objects);
+ // The tangent of an intersection curve can point directly at a stationary
+ // vehicle on a different exit. Check the remaining swept path instead.
+ if(c.curve&&ahead){let conflicts=false;
+  const probe={...c};
+  for(let d=4;d<=54;d+=6){probe.pos=Math.min(c.len,c.pos+d);pose(probe);
+   if(Math.hypot(probe.x-ahead.x,probe.y-ahead.y)<27){conflicts=true;break}}
+  if(!conflicts)ahead=null
+ }
  const red=!c.curve&&(c.toI===2||c.toJ===1)&&!green(c.toI,c.toJ,c.d,time);
  const junction=c.toI+','+c.toJ;
  const waiting=!c.curve&&occupied.has(junction);
- const limit=stop?0:(red||waiting)?Math.min(c.max,Math.max(0,(c.len-c.pos-5)*2)):c.curve?48:c.max;
+ const obstacle=ahead||(waiting&&c.len-c.pos<15?occupied.get(junction):null);
+ c.holdLine=waiting&&c.len-c.pos<18;
+ const e=recovery(c,dt,obstacle,objects,player,red&&!c.curve);
+ if(offscreenRecovery(c,player,objects,d=>{
+  const probe={...c};let remaining=d;
+  while(remaining>probe.len-probe.pos){remaining-=probe.len-probe.pos;if(probe.curve)segment(probe);else turn(probe,rng)}
+  probe.pos+=remaining;pose(probe);return probe
+ }))continue;
+ const stop=ahead&&(!e||ahead!==e.blocker);
+ const limit=e?.reverse?-15:e&&!stop?22:stop?0:(red||waiting)?Math.min(c.max,Math.max(0,(c.len-c.pos-5)*2)):c.curve?48:c.max;
  c.speed+=Math.max(-220*dt,Math.min(80*dt,limit-c.speed));c.pos+=c.speed*dt;
  if(waiting&&c.pos>=c.len){c.pos=c.len-.01;c.speed=0}
- if(c.pos>=c.len){if(c.curve)segment(c);else {turn(c,rng);occupied.add(junction)}}
- pose(c);
+ if(c.pos>=c.len){if(c.curve)segment(c);else {turn(c,rng);occupied.set(junction,c)}}
+ pose(c);bypass(c,dt,e,oldX,oldY);
  }
 }
 // Continuous closed lanes. Only nearby vehicles need an updated pose each step.
@@ -107,8 +138,16 @@ const lanes=[lanePath(peripheralLoop),lanePath([...peripheralLoop].reverse())];
 function roadPose(c){const lane=lanes[c.lane],s=lane.sections.find(s=>c.pos<s.base+s.len)||lane.sections[0],u=(c.pos-s.base)/s.len;c.x=s.p[0]+s.dx*u;c.y=s.p[1]+s.dy*u;c.a=Math.atan2(s.dy,s.dx)}
 export function roadTraffic(){return Array.from({length:8},(_,i)=>{const lane=i%2,c={lane,pos:lanes[lane].total*((i+.4)/8),speed:75+i*5,id:10+i};roadPose(c);return c})}
 export function advanceRoadTraffic(cars,dt,player,racers=[]){
- for(const c of cars){const nearby=Math.hypot(player.x-c.x,player.y-c.y)<1700;
- const blocked=nearby&&racers.some(r=>{const dx=r.x-c.x,dy=r.y-c.y,f=dx*Math.cos(c.a)+dy*Math.sin(c.a);return f>0&&f<46&&Math.abs(dy*Math.cos(c.a)-dx*Math.sin(c.a))<20});
- c.pos=(c.pos+(blocked?0:dt)*(c.x>7720&&c.y>1100?52:c.speed))%lanes[c.lane].total;
- c.age=(c.age||0)+dt;if(nearby||c.age>.45){roadPose(c);c.age=0}}
+ const objects=[...cars,...racers,...(player?[player]:[])];
+ for(const c of cars){
+  const oldX=c.x,oldY=c.y;
+  c.cruise??=c.speed;
+  const obstacle=blockerAhead(c,objects);
+  const e=recovery(c,dt,obstacle,objects,player);
+  if(offscreenRecovery(c,player,objects,d=>{const probe={...c,pos:(c.pos+d)%lanes[c.lane].total};roadPose(probe);return probe}))continue;
+  const target=e?.reverse?-15:obstacle&&obstacle!==e?.blocker?0:e?22:c.x>7720&&c.y>1100?52:c.cruise;
+  c.speed+=Math.max(-260*dt,Math.min(85*dt,target-c.speed));
+  c.pos=(c.pos+c.speed*dt)%lanes[c.lane].total;
+  roadPose(c);bypass(c,dt,e,oldX,oldY)
+ }
 }
