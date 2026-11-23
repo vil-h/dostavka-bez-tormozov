@@ -5,14 +5,14 @@ const levels=fresh().levels, dt=1/60;
 for(const model of ['van','hatch','coupe','pickup'])for(const j of jobs)test(model+' · Рейс '+(j.id+1)+' · '+j.name,()=>{
  const r=start(j);r.model=model;
  // Follow marked road lanes. Slow down at the pickup, corner and destination.
- const path=[j.start,[j.end[0],j.start[1]],j.end];
+ const path=j.via||[j.start,[j.end[0],j.start[1]],j.end];
  let i=0;
  for(let n=0;n<j.time*60&&!r.done;n++){
   const [x,y]=path[i],d=Math.hypot(x-r.x,y-r.y);
   const a=Math.atan2(y-r.y,x-r.x)-r.a,delta=Math.atan2(Math.sin(a),Math.cos(a));
   const limit=Math.min(166,Math.max(42,d*1.15))/(1+Math.abs(delta));
   step(r,{gas:r.speed<limit,brake:r.speed>limit+12,turn:Math.max(-1,Math.min(1,delta*2.5))},dt,levels);
-  if(i===0&&r.loaded)i++;else if(i===1&&d<26)i++;
+  if(i===0&&r.loaded)i++;else if(i>0&&i<path.length-1&&d<26)i++;
  }
  assert.equal(r.done,'success');assert.ok(r.hp>0);
  const s=fresh();settle(s,r);const paid=s.money;assert.ok(paid>0);settle(s,r);assert.equal(s.money,paid);assert.ok(s.best[j.id]);
