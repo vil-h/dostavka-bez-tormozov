@@ -125,7 +125,7 @@ export function liveMap(c,s){
  for(const road of roads){trace(c,road.points);c.stroke()}
  ribbon(c,e,0,e.length,30,'#567975');ribbon(c,e,p.progress,Math.min(e.length,p.progress+380),25,'#9cf7cd');
  const turn=nextTurn(e,p);if(turn){const t=pointAt(e,turn.s);c.fillStyle='#ffc66e';const mx=p.x+Math.max(-(w/2-7)/k,Math.min((w/2-7)/k,t.x-p.x)),my=p.y+Math.max(-(h/2-7)/k,Math.min((h/2-7)/k,t.y-p.y));c.beginPath();c.arc(mx,my,29,0,7);c.fill()}
- for(const b of s.bots){c.fillStyle='#ff9477';c.beginPath();c.arc(b.x,b.y,34,0,7);c.fill()}c.restore();
+ for(const b of s.bots){c.fillStyle=b.name==='Лис'?'#ffc376':b.name==='Рысь'?'#ff807a':'#cab0ff';c.beginPath();c.arc(b.x,b.y,35,0,7);c.fill();c.lineWidth=8;c.strokeStyle='#382a30';c.stroke()}c.restore();
  const end=e.points.at(-1),[fx,fy]=screen(...end),x=Math.max(9,Math.min(w-15,fx)),y=Math.max(14,Math.min(h-5,fy));
  c.fillStyle='#f5efce';c.font='bold 17px system-ui';c.fillText('⚑',x-5,y);
  c.save();c.translate(w/2,h/2);c.rotate(p.a);trace(c,[[11,0],[-8,-7],[-4,0],[-8,7],[11,0]]);c.fillStyle='#fff';c.fill();c.strokeStyle='#21312e';c.lineWidth=1;c.stroke();c.restore()

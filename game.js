@@ -1,5 +1,5 @@
 import {bounds,avenue,cross,roadEdge} from './geography.js';
-import {restoreRecords} from './challenges.js';
+import {restoreRecords,difficulties} from './challenges.js';
 import {vehicles,stockCar,restoreGarage} from './vehicles.js';
 export const streetsX=avenue;
 export const streetsY=cross;
@@ -25,7 +25,7 @@ export const parts={engine:'Двигатель',brakes:'Тормоза',suspensi
 export const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 export function fresh(){
  const state={
-  schema:5,records:{},selected:'van',garage:{van:stockCar('van')},money:0,best:{},sfx:.65,music:.32,
+  schema:5,difficulty:'normal',records:{},selected:'van',garage:{van:stockCar('van')},money:0,best:{},sfx:.65,music:.32,
   controls:{scheme:'wheel',sensitivity:1,size:1,opacity:.85,swap:false,auto:false}
  };
  // Compatibility for callers that read the original van's levels.
@@ -37,6 +37,7 @@ export function loadSave(raw){
  try{const d=JSON.parse(raw); if(!d)return s;
  const num=(v,f,a,b)=>Number.isFinite(v)?clamp(v,a,b):f;
  s.money=Math.floor(num(d.money,0,0,1e9));
+ if(Object.hasOwn(difficulties,d.difficulty))s.difficulty=d.difficulty;
  restoreGarage(s,d);s.records=restoreRecords(d.records);
  for(const j of jobs){const b=d.best?.[j.id];if(b&&Number.isInteger(b.score)&&Number.isFinite(b.time))s.best[j.id]={score:num(b.score,0,0,100),time:num(b.time,0,0,j.time)}}
  const opt=d.controls||{};

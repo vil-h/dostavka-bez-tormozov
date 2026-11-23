@@ -15,8 +15,10 @@ for(const [id,e] of Object.entries(events)){
  e.id=id;if(e.zone){e.gates=[];e.length=0;continue}
  e.record=id+'151';prepare(e,checks[id])
 }
+export const difficulties={rookie:{name:'Новичок',pay:.85},normal:{name:'Обычный',pay:1},pro:{name:'Профессионал',pay:1.15}};
+export function raceKey(e,mode){return e.type==='race'?e.id+'152_'+mode:e.record}
 export function restoreRecords(raw){
- const records={};for(const [id,e] of Object.entries({...events,...Object.fromEntries(Object.values(events).map(e=>[e.record,e]))})){
+ const records={};for(const [id,e] of Object.entries({...events,...Object.fromEntries(Object.values(events).flatMap(e=>[[e.record,e],...Object.keys(difficulties).map(d=>[raceKey(e,d),e])]))})){
  const src=raw?.[id];if(!src||typeof src!=='object')continue;
  const r={};for(const field of e.type==='drift'?['score','combo']:e.type==='race'?['time','place']:['time']){
  const entry=src[field];if(!entry||!Number.isFinite(entry.value)||entry.value<=0||!['van','hatch','coupe','pickup'].includes(entry.model))continue;

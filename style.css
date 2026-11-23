@@ -54,3 +54,4 @@ fieldset{margin:12px 0}legend{font-size:1.15rem;font-weight:bold}select{padding:
 #recover{position:absolute;pointer-events:auto;left:var(--left);top:calc(var(--top) + 145px);font-size:.75rem;min-height:34px;padding:4px 8px;color:#ffdb9e}
 #mapCar[hidden]{display:none}
 .racing #navigator{width:clamp(94px,14vw,126px)}.racing #mapRoad{display:block;width:100%;opacity:1}
+.difficulty{display:flex;gap:4px;border:0;padding:0;margin:6px 0 12px;flex-wrap:wrap}.difficulty legend{font-size:.8rem;color:#c3d2c1;margin-bottom:4px}.difficulty button{padding:6px 10px;min-height:36px}.difficulty button[aria-pressed=true]{background:#cbf76d;color:#18251c}

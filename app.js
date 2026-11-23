@@ -2,7 +2,7 @@ import {guidance,pointAt} from './routing.js';
 import {bounds} from './geography.js';
 import {atlas,drawRegion} from './countryside.js';
 import {roadTraffic,advanceRoadTraffic} from './city.js';
-import {events} from './challenges.js';
+import {events,difficulties} from './challenges.js';
 import {newContest,advanceContest,finishOpponents,award,recover} from './contest.js';
 import {eventsView,briefing,resultsView,clockText} from './contestUI.js';
 import {drawCourse,drawMini,liveMap,updateTrails,drawTrails} from './eventArt.js';
@@ -40,7 +40,7 @@ function shell(content,foot=''){
 const poster=()=>'<div class="poster"><canvas id="hero" width="620" height="255" aria-label="' + vehicles[state.selected].name + '"></canvas><span class="plate">' + vehicles[state.selected].name + '</span></div>';
 function menu(){
  scene='menu';run=null;competition=null;
- shell('<div class="hero"><div><span class="eyebrow">ВЕРСИЯ 1.5.1 · ГОНКИ БЕЗ ПУТАНИЦЫ</span><h1>ДОСТАВКА<br> <em>БЕЗ ТОРМОЗОВ</em></h1><p>За рулём решаешь ты. Исследуй район или возьми заказ по пути.</p></div>'+poster()+'</div><article class="job"><small>СВОБОДНЫЙ ГОРОД</small><h3>Город в твоём распоряжении</h3><p>Езжай куда хочется. Диспетчер предложит работу в дороге.</p>'+button('Свободная езда','free','primary launch')+'</article><div class="menu">'+button('Соревнования','events')+button('Карьера · '+Object.keys(state.best).length+'/9','orders')+button('Гараж','garage')+button('Настройки','settings')+'</div>','WASD или стрелки · Пробел — ручник · Esc — пауза');
+ shell('<div class="hero"><div><span class="eyebrow">ВЕРСИЯ 1.5.2 · БЕЗ ПРАВА НА ОШИБКУ</span><h1>ДОСТАВКА<br> <em>БЕЗ ТОРМОЗОВ</em></h1><p>За рулём решаешь ты. Исследуй район или возьми заказ по пути.</p></div>'+poster()+'</div><article class="job"><small>СВОБОДНЫЙ ГОРОД</small><h3>Город в твоём распоряжении</h3><p>Езжай куда хочется. Диспетчер предложит работу в дороге.</p>'+button('Свободная езда','free','primary launch')+'</article><div class="menu">'+button('Соревнования','events')+button('Карьера · '+Object.keys(state.best).length+'/9','orders')+button('Гараж','garage')+button('Настройки','settings')+'</div>','WASD или стрелки · Пробел — ручник · Esc — пауза');
 }
 function page(name,title,body,foot=''){scene=name;shell('<section class="page"><div class="cardhead"><h2>'+title+'</h2>'+button('В меню','menu')+'</div>'+body+'</section>',foot)}
 function eventPage(body){
@@ -49,15 +49,15 @@ function eventPage(body){
 }
 function openEvents(){competition=null;run=null;eventPage(eventsView(state,eventTab))}
 function startEvent(id){
- competition=newContest(id,state.selected);run=competition.player;cars=[];rural=[];marks=[];cityTime=0;flash=0;
- for(const bot of competition.bots){const sprite=document.createElement('canvas');sprite.width=64;sprite.height=44;drawVehicle(sprite.getContext('2d'),32,22,0,bot.model,stockCar(bot.model).look);bot.sprite=sprite}
+ competition=newContest(id,state.selected,Math.random,state.difficulty);run=competition.player;cars=[];rural=[];marks=[];cityTime=0;flash=0;
+ for(const bot of competition.bots){const sprite=document.createElement('canvas');sprite.width=64;sprite.height=44;drawVehicle(sprite.getContext('2d'),32,22,0,bot.model,{...stockCar(bot.model).look,color:bot.name==='Лис'?'#ff9f4b':bot.name==='Рысь'?'#dc6268':'#997acb'});bot.sprite=sprite}
  const m=$('mapRoad').getContext('2d');if(competition.e.zone){m.drawImage(city,0,0,168,128);const [l,t,r,b]=competition.e.zone;m.fillStyle='#ffb24d45';m.strokeStyle='#ffc777';m.fillRect(l/10,t/10,(r-l)/10,(b-t)/10);m.strokeRect(l/10,t/10,(r-l)/10,(b-t)/10)}
  resume();sound.fx('count');
 }
 function competitionHud(){
  const s=competition,e=s.e,p=s.player,d=s.drift;
  $('hud').classList.remove('idle');$('offer').hidden=true;$('health').hidden=true;$('clock').hidden=false;
- $('order').textContent=e.type==='race'?s.place+' / '+(s.bots.length+1)+' место':e.name;
+ $('order').textContent=e.type==='race'?s.place+' / '+(s.bots.length+1)+' место'+(s.noticeUntil>s.t?' · '+s.notice:''):e.name;
  $('clock').textContent=clockText(e.limit?Math.max(0,e.limit-s.t):s.t);
  $('speed').textContent=Math.round(p.speed*.36)+' км/ч';$('wallet').textContent=e.type==='drift'?(d.total+Math.floor(d.chain))+' очк.':'Ворота '+p.gate+'/'+e.gates.length;
  $('guide').textContent=e.type==='drift'?(p.x<e.zone[0]||p.y<e.zone[1]||p.x>e.zone[2]||p.y>e.zone[3]?'За границей дрифт-зоны':'Серия +'+Math.floor(d.chain)+' · ×'+d.mult):guidance(e,p);
@@ -69,7 +69,7 @@ function contestFrame(input,dt){
  const s=competition,d=s.drift,lastCount=Math.ceil(s.count),lastPlace=s.place,oldChain=d.chain,oldMulti=d.mult;
  advanceContest(s,input,dt,state.garage[run.model].levels);
  if(lastCount!==Math.ceil(s.count))sound.fx(s.count>0?'count':'go');
- if(s.place<lastPlace)sound.fx('pass');
+ if(s.place!==lastPlace&&s.t>.5){s.notice=s.place<lastPlace?'Обгон':'Обошли';s.noticeUntil=s.t+1.2;if(s.place<lastPlace)sound.fx('pass')}
  if(!oldChain&&d.chain)sound.fx('combo');else if(d.mult>oldMulti)sound.fx('multi');else if(oldChain&&!d.chain&&run.hit)sound.fx('loss');
  updateTrails(s.fx,run,dt,w<950);
 }
@@ -125,7 +125,7 @@ async function fullscreen(){
  }catch{const status=$('fullscreenStatus');if(status)status.textContent='Полный экран недоступен в этом браузере.'}
 }
 const fullButton=()=>button('На весь экран','fullscreen')+'<span id="fullscreenStatus" role="status"></span>';
-function settings(confirm=false){page('settings','Настройки',controlsForm()+fullButton()+'<div class="item">'+[['sfx','Эффекты'],['music','Музыка']].map(([k,n])=>'<label>'+n+' <output id="val-'+k+'">'+Math.round(state[k]*100)+'%</output><input type="range" data-volume="'+k+'" min="0" max="100" value="'+Math.round(state[k]*100)+'"></label>').join('')+'</div><div class="actions">'+(confirm?'Удалить деньги, рекорды и улучшения? '+button('Удалить','reset','danger')+button('Отмена','settings'):button('Сбросить прогресс','confirm','danger'))+'</div>')}
+function settings(confirm=false){page('settings','Настройки',controlsForm()+'<label class="item">Сложность гонок <select id="raceDifficulty">'+Object.entries(difficulties).map(([d,v])=>'<option value="'+d+'" '+(d===state.difficulty?'selected':'')+'>'+v.name+'</option>').join('')+'</select></label>'+fullButton()+'<div class="item">'+[['sfx','Эффекты'],['music','Музыка']].map(([k,n])=>'<label>'+n+' <output id="val-'+k+'">'+Math.round(state[k]*100)+'%</output><input type="range" data-volume="'+k+'" min="0" max="100" value="'+Math.round(state[k]*100)+'"></label>').join('')+'</div><div class="actions">'+(confirm?'Удалить деньги, рекорды и улучшения? '+button('Удалить','reset','danger')+button('Отмена','settings'):button('Сбросить прогресс','confirm','danger'))+'</div>')}
 let cars=[],cityTime=0,shownOffer=null;
 function enterCity(r){competition=null;run=r;run.model=state.selected;cars=createTraffic();rural=roadTraffic();atlas($('mapRoad'),null,null,null,false);cityTime=0;marks=[];flash=0;resume();sound.fx('start')}
 function begin(id){if(!jobs[id]||!available(jobs[id]))return;enterCity(start(jobs[id]))}
@@ -140,14 +140,15 @@ panel.addEventListener('click',e=>{
  if(scene==='garage'&&garageAction(action,arg,value))return;
  if(action==='events')openEvents();
  else if(action==='category'){eventTab=arg;openEvents()}
+ else if(action==='difficulty'){state.difficulty=value;save();eventPage(briefing(events[arg],state))}
  else if(action==='brief')eventPage(briefing(events[arg],state));
  else if(action==='startEvent')startEvent(arg);
  else if(action==='go')begin(Number(arg));
- else if(action==='reset'){const {sfx,music,controls}=state;state=Object.assign(fresh(),{sfx,music,controls});save();settings()}
+ else if(action==='reset'){const {sfx,music,controls,difficulty}=state;state=Object.assign(fresh(),{sfx,music,controls,difficulty});save();settings()}
  else ({atlas:showAtlas,fullscreen,menu,free:()=>enterCity(freeRide()),garage,orders,resume,settings,confirm:()=>settings(true)})[action]?.()
 });
 panel.addEventListener('input',e=>{
- const el=e.target,k=el.dataset.control;if(!k)return;
+ const el=e.target,k=el.dataset.control;if(el.id==='raceDifficulty'){state.difficulty=el.value;save();return}if(!k)return;
  if(el.type==='range'){state.controls[k]=Number(el.value)/100;$('setting-'+k).textContent=el.value+'%'}
  else state.controls[k]=el.type==='checkbox'?el.checked:el.value;
  resetInput();applyControls();save();
