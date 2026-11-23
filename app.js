@@ -1,10 +1,11 @@
+import {guidance,pointAt} from './routing.js';
 import {bounds} from './geography.js';
 import {atlas,drawRegion} from './countryside.js';
 import {roadTraffic,advanceRoadTraffic} from './city.js';
 import {events} from './challenges.js';
-import {newContest,advanceContest,finishOpponents,award} from './contest.js';
+import {newContest,advanceContest,finishOpponents,award,recover} from './contest.js';
 import {eventsView,briefing,resultsView,clockText} from './contestUI.js';
-import {drawCourse,drawMini,updateTrails,drawTrails} from './eventArt.js';
+import {drawCourse,drawMini,liveMap,updateTrails,drawTrails} from './eventArt.js';
 import {vehicles,stockCar,purchase,selectCar,paintCar,parked} from './vehicles.js';
 import {garageView} from './garage.js';
 import {bindPedals,bindWheel,createSteering,smoothSteering,driveInput} from './input.js';
@@ -39,7 +40,7 @@ function shell(content,foot=''){
 const poster=()=>'<div class="poster"><canvas id="hero" width="620" height="255" aria-label="' + vehicles[state.selected].name + '"></canvas><span class="plate">' + vehicles[state.selected].name + '</span></div>';
 function menu(){
  scene='menu';run=null;competition=null;
- shell('<div class="hero"><div><span class="eyebrow">ВЕРСИЯ 1.5 · ЗА ГОРОД</span><h1>ДОСТАВКА<br> <em>БЕЗ ТОРМОЗОВ</em></h1><p>За рулём решаешь ты. Исследуй район или возьми заказ по пути.</p></div>'+poster()+'</div><article class="job"><small>СВОБОДНЫЙ ГОРОД</small><h3>Город в твоём распоряжении</h3><p>Езжай куда хочется. Диспетчер предложит работу в дороге.</p>'+button('Свободная езда','free','primary launch')+'</article><div class="menu">'+button('Соревнования','events')+button('Карьера · '+Object.keys(state.best).length+'/9','orders')+button('Гараж','garage')+button('Настройки','settings')+'</div>','WASD или стрелки · Пробел — ручник · Esc — пауза');
+ shell('<div class="hero"><div><span class="eyebrow">ВЕРСИЯ 1.5.1 · ГОНКИ БЕЗ ПУТАНИЦЫ</span><h1>ДОСТАВКА<br> <em>БЕЗ ТОРМОЗОВ</em></h1><p>За рулём решаешь ты. Исследуй район или возьми заказ по пути.</p></div>'+poster()+'</div><article class="job"><small>СВОБОДНЫЙ ГОРОД</small><h3>Город в твоём распоряжении</h3><p>Езжай куда хочется. Диспетчер предложит работу в дороге.</p>'+button('Свободная езда','free','primary launch')+'</article><div class="menu">'+button('Соревнования','events')+button('Карьера · '+Object.keys(state.best).length+'/9','orders')+button('Гараж','garage')+button('Настройки','settings')+'</div>','WASD или стрелки · Пробел — ручник · Esc — пауза');
 }
 function page(name,title,body,foot=''){scene=name;shell('<section class="page"><div class="cardhead"><h2>'+title+'</h2>'+button('В меню','menu')+'</div>'+body+'</section>',foot)}
 function eventPage(body){
@@ -50,8 +51,7 @@ function openEvents(){competition=null;run=null;eventPage(eventsView(state,event
 function startEvent(id){
  competition=newContest(id,state.selected);run=competition.player;cars=[];rural=[];marks=[];cityTime=0;flash=0;
  for(const bot of competition.bots){const sprite=document.createElement('canvas');sprite.width=64;sprite.height=44;drawVehicle(sprite.getContext('2d'),32,22,0,bot.model,stockCar(bot.model).look);bot.sprite=sprite}
- const m=$('mapRoad').getContext('2d');m.drawImage(city,0,0,168,128);if(competition.e.outside)atlas(m.canvas,null,null,competition.e.points,false);else {m.strokeStyle='#dfff64';m.lineWidth=2;m.beginPath();
- for(const [i,[x,y]] of competition.e.points.entries())i?m.lineTo(x/10,y/10):m.moveTo(x/10,y/10);m.stroke()}
+ const m=$('mapRoad').getContext('2d');if(competition.e.zone){m.drawImage(city,0,0,168,128);const [l,t,r,b]=competition.e.zone;m.fillStyle='#ffb24d45';m.strokeStyle='#ffc777';m.fillRect(l/10,t/10,(r-l)/10,(b-t)/10);m.strokeRect(l/10,t/10,(r-l)/10,(b-t)/10)}
  resume();sound.fx('count');
 }
 function competitionHud(){
@@ -60,7 +60,8 @@ function competitionHud(){
  $('order').textContent=e.type==='race'?s.place+' / '+(s.bots.length+1)+' место':e.name;
  $('clock').textContent=clockText(e.limit?Math.max(0,e.limit-s.t):s.t);
  $('speed').textContent=Math.round(p.speed*.36)+' км/ч';$('wallet').textContent=e.type==='drift'?(d.total+Math.floor(d.chain))+' очк.':'Ворота '+p.gate+'/'+e.gates.length;
- $('guide').textContent=e.type==='drift'?'Серия +'+Math.floor(d.chain)+' · ×'+d.mult:e.type==='trial'?'Сплит '+clockText(p.split)+' · Рекорд '+(state.records[e.id]?.time?clockText(state.records[e.id].time.value):'—'):'Следуй через светящиеся ворота';
+ $('guide').textContent=e.type==='drift'?(p.x<e.zone[0]||p.y<e.zone[1]||p.x>e.zone[2]||p.y>e.zone[3]?'За границей дрифт-зоны':'Серия +'+Math.floor(d.chain)+' · ×'+d.mult):guidance(e,p);
+ $('recover').hidden=!!e.zone||!(p.missed||p.off||p.stuck>2);if(!e.zone)liveMap($('mapRoad').getContext('2d'),s);$('mapCar').hidden=!e.zone;
  $('startLight').hidden=s.count<=0&&s.t>.7;$('startLight').textContent=s.count>0?Math.ceil(s.count):'СТАРТ!';
  const dot=$('mapCar');dot.style.left=p.x/(e.outside?bounds[0]:1680)*100+'%';dot.style.top=p.y/(e.outside?bounds[1]:1280)*100+'%';dot.style.transform='translate(-50%,-50%) rotate('+p.a+'rad)';
 }
@@ -160,6 +161,7 @@ function showAtlas(){
 }
 $('atlas').onclick=showAtlas;
 $('pause').onclick=pause;
+$('recover').onclick=()=>{if(scene==='drive'&&competition&&recover(competition)){competition.fx.previous=null;resetInput();updateHud()}};
 $('home').onclick=menu;
 function answer(accept){if(scene!=='drive'||!run.offer)return;if(accept)acceptOffer(run);else skipOffer(run);updateHud()}
 $('accept').onclick=()=>answer(true);$('skip').onclick=()=>answer(false);
@@ -170,6 +172,7 @@ applyControls();bindWheel($('wheel'),wheel,()=>state.controls.sensitivity);
 bindPedals(document.querySelectorAll('[data-key]'),pointers,()=>sound.unlock());
 addEventListener('blur',pause);document.addEventListener('visibilitychange',()=>{if(document.hidden){pause();sound.suspend()}});
 function updateHud(){
+ $('recover').hidden=true;$('mapCar').hidden=false;
  $('navigator').hidden=!(competition||run?.free);$('startLight').hidden=true;$('hud').classList.toggle('racing',!!competition);
  if(competition){competitionHud();return}
  const r=run;const locator=$('mapCar');locator.style.left=r.x/bounds[0]*100+'%';locator.style.top=r.y/bounds[1]*100+'%';locator.style.transform='translate(-50%,-50%) rotate('+r.a+'rad)';const j=r.j,showTimer=j&&(!r.free||r.loaded);
@@ -215,15 +218,16 @@ function draw(){
  cars.concat(rural).filter(c=>c.x>x-50&&c.x<x+vw+50&&c.y>y-50&&c.y<y+vh+50).forEach((car,i)=>drawCar(ctx,car.x,car.y,car.a,['#87b6b1','#bea7b2','#d4bd7e'][i%3]));
  if(r.j?.weather==='ночь'||competition?.e.night){ctx.fillStyle='#12193c80';ctx.fillRect(x,y,vw,vh);ctx.save();ctx.translate(r.x,r.y);ctx.rotate(r.a);ctx.fillStyle='#fff5b237';ctx.beginPath();ctx.moveTo(12,-7);ctx.lineTo(115,-36);ctx.lineTo(115,36);ctx.lineTo(12,7);ctx.fill();ctx.restore()}
  if(competition){
- drawCourse(ctx,competition.e,r.gate+1,competition.t);drawTrails(ctx,competition.fx);
+ drawCourse(ctx,competition.e,r,competition.t);drawTrails(ctx,competition.fx);
  for(const bot of competition.bots){ctx.save();ctx.translate(bot.x,bot.y);ctx.rotate(bot.a);ctx.drawImage(bot.sprite,-32,-22);ctx.restore()}
  }
  const gate=competition?.e.type!=='drift'?competition?.e.gates[r.gate]:null;
- const [tx,ty]=gate?[gate.x,gate.y]:r.j?target(r):[r.x,r.y];if(r.j){ctx.strokeStyle='#cbff6a';ctx.lineWidth=3;ctx.fillStyle='#afff4a39';ctx.beginPath();ctx.arc(tx,ty,34+3*Math.sin(cityTime*4),0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle='#18271d';ctx.fillRect(tx-12,ty-12,24,24);ctx.fillStyle='#d2ff70';ctx.font='bold 16px monospace';ctx.textAlign='center';ctx.fillText(r.loaded?'Б':'А',tx,ty+6);}
+ const aim=gate&&!r.missed?pointAt(competition.e,r.progress+(r.off?0:230)):gate;
+ const [tx,ty]=aim?[aim.x,aim.y]:r.j?target(r):[r.x,r.y];if(r.j){ctx.strokeStyle='#cbff6a';ctx.lineWidth=3;ctx.fillStyle='#afff4a39';ctx.beginPath();ctx.arc(tx,ty,34+3*Math.sin(cityTime*4),0,Math.PI*2);ctx.fill();ctx.stroke();ctx.fillStyle='#18271d';ctx.fillRect(tx-12,ty-12,24,24);ctx.fillStyle='#d2ff70';ctx.font='bold 16px monospace';ctx.textAlign='center';ctx.fillText(r.loaded?'Б':'А',tx,ty+6);}
  drawVehicle(ctx,r.x,r.y,r.a,r.model,state.garage[r.model].look);ctx.restore();
  if(r.j?.weather==='дождь'){ctx.strokeStyle='#cbf1ff64';ctx.lineWidth=1;ctx.beginPath();for(let i=0;i<55;i++){const a=(i*223+r.t*140)%w,b=(i*131+r.t*390)%h;ctx.moveTo(a,b);ctx.lineTo(a-4,b-11)}ctx.stroke()}
  const sx=(tx-x)*z,sy=(ty-y)*z;
- if((r.j||gate)&&(sx<35||sy<95||sx>w-35||sy>h-95)){const ax=clamp(sx,28,w-28),ay=clamp(sy,110,h-102);ctx.save();ctx.translate(ax,ay);ctx.rotate(Math.atan2(ty-r.y,tx-r.x));ctx.fillStyle='#c8f85f';ctx.strokeStyle='#142117';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(14,0);ctx.lineTo(-9,-9);ctx.lineTo(-5,0);ctx.lineTo(-9,9);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore()}
+ if((r.j||gate&&(r.off||r.missed))&&(sx<35||sy<95||sx>w-35||sy>h-95)){const ax=clamp(sx,28,w-28),ay=clamp(sy,110,h-102);ctx.save();ctx.translate(ax,ay);ctx.rotate(Math.atan2(ty-r.y,tx-r.x));ctx.fillStyle='#c8f85f';ctx.strokeStyle='#142117';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(14,0);ctx.lineTo(-9,-9);ctx.lineTo(-5,0);ctx.lineTo(-9,9);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore()}
  if(flash>0){ctx.fillStyle='rgba(255,99,44,'+flash+')';ctx.fillRect(0,0,w,h)}
 }
 function tick(now){if(Math.round(window.visualViewport?.width||innerWidth)!==w||Math.round(window.visualViewport?.height||innerHeight)!==h)resize();const elapsed=Math.min((now-last)/1000,.12);last=now;

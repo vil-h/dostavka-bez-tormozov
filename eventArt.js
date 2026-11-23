@@ -1,3 +1,5 @@
+import {roads} from './geography.js';
+import {pointAt,nextTurn} from './routing.js';
 import {streetsX,streetsY} from './game.js';
 
 const lime='#c7fc68',amber='#ffae69',ice='#96ebfe';
@@ -27,45 +29,6 @@ function chevron(ctx,x,y,rotation,color){
   ctx.restore();
 }
 
-export function drawCourse(ctx,event,gateIndex,time=0){
-  ctx.save();
-  if(event.type==='drift'){
-    if(event.zone)paintZone(ctx,event.zone);
-    ctx.restore();return;
-  }
-  const points=event.points;
-  if(!points?.length||gateIndex>=points.length){ctx.restore();return}
-  const index=Math.max(0,gateIndex),gate=event.gates?.[index-1]?[event.gates[index-1].x,event.gates[index-1].y]:points[index],start=points[Math.max(0,index-1)];
-  const angle=index?Math.atan2(gate[1]-start[1],gate[0]-start[0]):
-    Math.atan2((points[1]?.[1]??gate[1])-gate[1],(points[1]?.[0]??gate[0])-gate[0]);
-  const color=courseColor(event);
-  if(index>0){
-    // Sparse arrows on the approach communicate direction at street level.
-    const dx=Math.cos(angle),dy=Math.sin(angle),length=Math.hypot(gate[0]-start[0],gate[1]-start[1]);
-    for(let distance=28;distance<length-12;distance+=96){
-      chevron(ctx,gate[0]-dx*distance,gate[1]-dy*distance,angle,event.night?'#aaf4fc99':'#d7f9a681');
-    }
-  }
-  ctx.translate(gate[0],gate[1]);ctx.rotate(angle);
-  const finish=index===points.length-1,span=34;
-  ctx.fillStyle=event.night?'#92ebfb2e':'#bffa6726';ctx.fillRect(-8,-span,16,span*2);
-  if(finish){
-    for(let column=0;column<2;column++)for(let row=0;row<12;row++){
-      ctx.fillStyle=(row+column)%2?'#273329':'#ecf2db';
-      ctx.fillRect(column*5-5,row*(span/6)-span,5,span/6+.15);
-    }
-  }else{
-    ctx.fillStyle=color;ctx.fillRect(-1,-span,2,span*2);
-  }
-  for(const sign of [-1,1]){
-    const y=sign*(span+3);
-    ctx.fillStyle='#172322';ctx.fillRect(-7,y-5,14,10);
-    ctx.fillStyle=color;ctx.fillRect(-5,y-3,10,6);
-    ctx.globalAlpha=.35+.20*Math.sin(time*5);ctx.fillRect(-9,y-6,18,12);ctx.globalAlpha=1;
-  }
-  ctx.restore();
-}
-
 export function drawMini(ctx,event){
   const w=ctx.canvas.width,h=ctx.canvas.height;
   if(w<1||h<1)return;
@@ -90,7 +53,7 @@ export function drawMini(ctx,event){
     trace(ctx,route);ctx.strokeStyle=color;ctx.lineWidth=2.6/scale;ctx.lineJoin='round';ctx.stroke();
     const first=route[0],last=route[route.length-1],r=3/scale;
     ctx.fillStyle=color;ctx.beginPath();ctx.arc(first[0],first[1],r,0,Math.PI*2);ctx.fill();
-    ctx.fillStyle='#f5f5df';ctx.fillRect(last[0]-r,last[1]-r,2*r,2*r);
+    ctx.fillStyle='#f5f5df';ctx.fillRect(last[0]-r/4,last[1]-4*r,r/2,4*r);ctx.fillRect(last[0],last[1]-4*r,2.4*r,1.4*r);
   }
   ctx.restore();
 }
@@ -133,4 +96,37 @@ export function drawTrails(ctx,fx){
     ctx.beginPath();ctx.arc(p.x,p.y,3+p.age*12,0,2*Math.PI);ctx.fill();
   }
   ctx.restore();
+}
+
+function ribbon(c,e,from,to,width,color){
+ const start=pointAt(e,from),end=pointAt(e,to);
+ c.beginPath();c.moveTo(start.x,start.y);for(const s of e.segments)if(s.base>from&&s.base<to)c.lineTo(s.x,s.y);
+ c.lineTo(end.x,end.y);c.strokeStyle=color;c.lineWidth=width;c.lineJoin=c.lineCap='round';c.stroke()
+}
+export function drawCourse(c,e,p,t){
+ c.save();
+ if(e.zone){paintZone(c,e.zone);c.restore();return}
+ const s=p.progress,far=Math.min(e.length,s+1050);
+ ribbon(c,e,Math.max(0,s-130),far,9,'#a4efdc60');ribbon(c,e,s,Math.min(e.length,s+320),6,'#a4ffdcba');
+ for(let d=Math.ceil(s/94)*94;d<far;d+=94){const a=pointAt(e,d);chevron(c,a.x,a.y,Math.atan2(a.dy,a.dx),d<s+320?'#e0ffe6':'#aad5c2')}
+ const g=e.gates[p.gate];if(g){
+ const last=p.gate===e.gates.length-1,w=g.width-5;c.translate(g.x,g.y);c.rotate(Math.atan2(g.dy,g.dx));
+ c.fillStyle=last?'#f3f6de':'#fbc96c';c.fillRect(-2,-w,4,w*2);
+ if(last){for(let i=0;i<2;i++)for(let j=0;j<12;j++){c.fillStyle=(i+j)%2?'#182329':'#fff9d9';c.fillRect(i*7-7,-w+j*w/6,7,w/6+.3)}}
+ for(const side of [-1,1]){c.fillStyle='#1f2f32';c.fillRect(-9,side*w-5,18,10);c.fillStyle=last?'#fff':'#ffbc57';c.fillRect(-6,side*w-3,12,6)}
+ if(last){c.fillStyle='#152522';c.fillRect(-23,-w-25,50,18);c.fillStyle='#fff7cb';c.font='bold 12px system-ui';c.fillText('ФИНИШ',-21,-w-12)}
+ }c.restore()
+}
+export function liveMap(c,s){
+ const {e,player:p}=s,w=c.canvas.width,h=c.canvas.height;
+ const k=.14,tx=w/2-p.x*k,ty=h/2-p.y*k;const screen=(x,y)=>[x*k+tx,y*k+ty];
+ c.save();c.fillStyle='#142724';c.fillRect(0,0,w,h);c.translate(tx,ty);c.scale(k,k);
+ c.strokeStyle='#324843';c.lineWidth=15;c.beginPath();for(const x of streetsX){c.moveTo(x,0);c.lineTo(x,1280)}for(const y of streetsY){c.moveTo(0,y);c.lineTo(1680,y)}c.stroke();
+ for(const road of roads){trace(c,road.points);c.stroke()}
+ ribbon(c,e,0,e.length,30,'#567975');ribbon(c,e,p.progress,Math.min(e.length,p.progress+380),25,'#9cf7cd');
+ const turn=nextTurn(e,p);if(turn){const t=pointAt(e,turn.s);c.fillStyle='#ffc66e';const mx=p.x+Math.max(-(w/2-7)/k,Math.min((w/2-7)/k,t.x-p.x)),my=p.y+Math.max(-(h/2-7)/k,Math.min((h/2-7)/k,t.y-p.y));c.beginPath();c.arc(mx,my,29,0,7);c.fill()}
+ for(const b of s.bots){c.fillStyle='#ff9477';c.beginPath();c.arc(b.x,b.y,34,0,7);c.fill()}c.restore();
+ const end=e.points.at(-1),[fx,fy]=screen(...end),x=Math.max(9,Math.min(w-15,fx)),y=Math.max(14,Math.min(h-5,fy));
+ c.fillStyle='#f5efce';c.font='bold 17px system-ui';c.fillText('⚑',x-5,y);
+ c.save();c.translate(w/2,h/2);c.rotate(p.a);trace(c,[[11,0],[-8,-7],[-4,0],[-8,7],[11,0]]);c.fillStyle='#fff';c.fill();c.strokeStyle='#21312e';c.lineWidth=1;c.stroke();c.restore()
 }

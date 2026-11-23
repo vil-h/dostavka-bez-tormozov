@@ -1,10 +1,12 @@
+import {pointAt,project,nextTurn} from './routing.js';
 import {events,medal} from './challenges.js';
 import {start,jobs,step,clamp,edge} from './game.js';
 import {stockCar} from './vehicles.js';
 const stock=stockCar('van').levels;
 export function newContest(id,model,rng=Math.random){
  const e=events[id], [x,y]=e.points[0];
- function driver(m,back,lane){const c=start(jobs[0]);Object.assign(c,{model:m,j:null,x:x-back,y:y+lane,a:0,gate:0,split:0,finish:null});return c}
+ const angle=Math.atan2(e.points[1][1]-y,e.points[1][0]-x),dx=Math.cos(angle),dy=Math.sin(angle);
+ function driver(m,back,lane){const c=start(jobs[0]);Object.assign(c,{model:m,j:null,x:x-back*dx-lane*dy,y:y-back*dy+lane*dx,a:angle,progress:0,off:false,missed:false,gate:0,split:0,finish:null});return c}
  const player=driver(model,0,0);player.a=Math.atan2(e.points[1][1]-y,e.points[1][0]-x);
  const bots=(e.rivals||[]).map((name,i)=>{
  const car=driver(['hatch','van','coupe'][i],i===2?58:24,i===0?-22:i===1?22:-6);
@@ -15,27 +17,37 @@ export function newContest(id,model,rng=Math.random){
 }
 export function checkGate(c,e,oldX,oldY,time){
  const g=e.gates[c.gate];if(!g||c.finish!==null)return false;
+ const moved=Math.hypot(c.x-oldX,c.y-oldY),range=100+moved;
+ const near=project(e,c.x,c.y,Math.max(0,c.progress-range),Math.min(e.length,c.progress+range));
+ c.off=near.gap>70;
+ if(!c.off)c.progress=near.s;
+ else {const road=project(e,c.x,c.y);if(road.gap<65&&road.s>g.s+50)c.missed=true}
  const before=(oldX-g.x)*g.dx+(oldY-g.y)*g.dy,after=(c.x-g.x)*g.dx+(c.y-g.y)*g.dy;
+ if(c.progress>g.s+45)c.missed=true;
  if(before>=0||after<0)return false;
  const f=-before/(after-before),crossX=oldX+(c.x-oldX)*f,crossY=oldY+(c.y-oldY)*f;
- if(Math.abs((crossX-g.x)*g.dy-(crossY-g.y)*g.dx)>40)return false;
- c.gate++;c.split=time;if(c.gate===e.gates.length)c.finish=time;return true;
+ if(Math.abs((crossX-g.x)*g.dy-(crossY-g.y)*g.dx)>g.width){if(Math.abs(c.progress-g.s)<90||(c.off&&Math.abs(c.progress-g.s)<360&&Math.hypot(c.x-g.x,c.y-g.y)<450))c.missed=true;return false}
+ if(Math.abs(c.progress-g.s)>80)return false;
+ c.gate++;c.missed=false;c.split=time;if(c.gate===e.gates.length)c.finish=time;return true;
+}
+export function recover(s){
+ const c=s.player,e=s.e;if(e.zone||s.done||s.count>0||(!c.off&&!c.missed&&!(c.stuck>2)))return false;
+ const prev=c.gate?e.gates[c.gate-1].s:0;
+ const global=project(e,c.x,c.y),at=Math.min(c.progress,prev,global.s),p=pointAt(e,at);
+ Object.assign(c,{x:p.x,y:p.y,a:Math.atan2(p.dy,p.dx),progress:at,vx:0,vy:0,speed:0,stuck:0,off:false,missed:false});for(let i=0;i<300;i++)for(const bot of s.bots)botStep(bot,e,1/60,s.t+(i+1)/60);s.t+=5;s.place=position(s);return true
 }
 export function botInput(c,e,t){
- const g=e.gates[c.gate],side=Math.sin(t*.8+c.phase)*4+c.lane;
- let x=g.x+g.dx*12-g.dy*side,y=g.y+g.dy*12+g.dx*side;
- // After a missed gate, approach it from the legal side again.
- const along=(c.x-g.x)*g.dx+(c.y-g.y)*g.dy;
- if(along>=0){x=g.x-g.dx*55;y=g.y-g.dy*55}
- const a=Math.atan2(y-c.y,x-c.x)-c.a,delta=Math.atan2(Math.sin(a),Math.cos(a));
- const dist=Math.hypot(x-c.x,y-c.y);
- const speed=Math.min(c.cruise,c.gate===e.gates.length-1?c.cruise:Math.max(54,dist*1.12))/(1+Math.abs(delta)*.8);
+ const finish=e.segments.at(-1),to=pointAt(e,c.progress+Math.max(42,c.speed*.53)),side=c.lane+3*Math.sin(t*.8+c.phase);
+ const beyond=c.progress>e.length-55?45:0;
+ const x=to.x-to.dy*side+finish.dx*beyond,y=to.y+to.dx*side+finish.dy*beyond;
+ const a=Math.atan2(y-c.y,x-c.x)-c.a,delta=Math.atan2(Math.sin(a),Math.cos(a)),turn=nextTurn(e,c);
+ const limit=turn?Math.max(90,185/Math.max(.65,turn.angle)+(turn.s-c.progress-55)*.9):c.cruise;
+ const speed=Math.min(c.cruise,limit)/(1+Math.abs(delta)*.75);
  return {turn:clamp(delta*c.sharp,-1,1),gas:c.speed<speed,brake:c.speed>speed+9};
 }
 function botStep(c,e,dt,time){if(c.finish!==null)return;const {x,y}=c;step(c,botInput(c,e,time),dt,stock);checkGate(c,e,x,y,time)}
 function distance(c,e){
- const g=e.gates[c.gate];if(!g)return e.length;
- const [x,y]=e.points[c.gate];return g.base+clamp((c.x-x)*g.dx+(c.y-y)*g.dy,0,g.length-.01)
+ return Math.min(c.progress,e.gates[c.gate]?.s??e.length)
 }
 export function position(s){
  const p=s.player;
@@ -57,7 +69,7 @@ export function scoreSlide(d,c,zone,dx,dy,dt){
 export function advanceContest(s,input,dt,levels){
  if(s.done)return;
  if(s.count>0){s.count=Math.max(0,s.count-dt);return}
- s.t+=dt;const p=s.player,{x,y}=p;step(p,input,dt,levels);
+ s.t+=dt;const p=s.player,{x,y}=p;step(p,input,dt,levels);p.stuck=input.gas&&p.speed<14?(p.stuck||0)+dt:0;
  if(s.e.type==='drift'){s.drift.handTime=input.hand?(s.drift.handTime||0)+dt:0;scoreSlide(s.drift,p,s.e.zone,p.x-x,p.y-y,dt);if(s.t>=s.e.limit){bankDrift(s.drift);s.done=true}return}
  checkGate(p,s.e,x,y,s.t);for(const bot of s.bots)botStep(bot,s.e,dt,s.t);s.place=position(s);s.done=p.finish!==null;
 }
