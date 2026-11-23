@@ -5,10 +5,10 @@ const stock=stockCar('van').levels;
 export function newContest(id,model,rng=Math.random){
  const e=events[id], [x,y]=e.points[0];
  function driver(m,back,lane){const c=start(jobs[0]);Object.assign(c,{model:m,j:null,x:x-back,y:y+lane,a:0,gate:0,split:0,finish:null});return c}
- const player=driver(model,0,0);
+ const player=driver(model,0,0);player.a=Math.atan2(e.points[1][1]-y,e.points[1][0]-x);
  const bots=(e.rivals||[]).map((name,i)=>{
  const car=driver(['hatch','van','coupe'][i],i===2?58:24,i===0?-22:i===1?22:-6);
- const skill=(e.night?[172,185,207]:[119,140])[i]+rng()*8;
+ const skill=(id==='express'?[180,204]:e.night?[172,185,207]:[119,140])[i]+rng()*8;
  return Object.assign(car,{name,cruise:skill,lane:[-10,11,-3][i],phase:rng()*6,sharp:[2.4,2.8,2.55][i]})
  });
  return {e,player,bots,count:3,t:0,done:false,paid:false,place:1,drift:{total:0,chain:0,hold:0,gap:0,mult:1,best:0},fx:{marks:[],smoke:[]}};
@@ -49,7 +49,7 @@ export function scoreSlide(d,c,zone,dx,dy,dt){
  }
  const forward=c.vx*Math.cos(c.a)+c.vy*Math.sin(c.a),side=Math.abs(c.vy*Math.cos(c.a)-c.vx*Math.sin(c.a));
  const angle=Math.atan2(side,forward),meters=Math.hypot(dx,dy);
- if(forward>35&&side>10&&c.speed>55&&angle>.14&&angle<1.24&&meters>35*dt&&meters<=520*dt){
+ if((d.handTime||0)<1.1&&forward>35&&side>10&&c.speed>55&&angle>.14&&angle<1.24&&meters>35*dt&&meters<=520*dt){
  d.hold+=dt;d.gap=0;d.mult=d.hold>=2.3?3:d.hold>=1.2?2:d.hold>=.55?1.5:1;
  d.chain+=meters*(.7+angle)*d.mult;
  }else if(d.chain>0){d.gap+=dt;if(d.gap>=.55)bankDrift(d)}
@@ -58,7 +58,7 @@ export function advanceContest(s,input,dt,levels){
  if(s.done)return;
  if(s.count>0){s.count=Math.max(0,s.count-dt);return}
  s.t+=dt;const p=s.player,{x,y}=p;step(p,input,dt,levels);
- if(s.e.type==='drift'){scoreSlide(s.drift,p,s.e.zone,p.x-x,p.y-y,dt);if(s.t>=s.e.limit){bankDrift(s.drift);s.done=true}return}
+ if(s.e.type==='drift'){s.drift.handTime=input.hand?(s.drift.handTime||0)+dt:0;scoreSlide(s.drift,p,s.e.zone,p.x-x,p.y-y,dt);if(s.t>=s.e.limit){bankDrift(s.drift);s.done=true}return}
  checkGate(p,s.e,x,y,s.t);for(const bot of s.bots)botStep(bot,s.e,dt,s.t);s.place=position(s);s.done=p.finish!==null;
 }
 export function finishOpponents(s){
@@ -72,7 +72,7 @@ export function award(s,state){
  if(e.type==='race'){pay=Math.round(e.reward*([1,.62,.29,.12][s.place-1]));fields={place:s.place,time:p.finish}}
  if(e.type==='trial'){pay=Math.round(e.reward*({'Золото':1,'Серебро':.75,'Бронза':.5,'Без медали':.2}[medal(e,p.finish)]));fields={time:p.finish}}
  if(e.type==='drift'){pay=Math.round(e.reward*clamp(d.total/e.goal,0,1));fields={score:d.total,combo:d.best}}
- const records=state.records[e.id]||={};let improved=false;
+ const records=state.records[e.record||e.id]||={};let improved=false;
  for(const [k,value] of Object.entries(fields)){if(value<=0)continue;
  if(!records[k]||(['score','combo'].includes(k)?value>records[k].value:value<records[k].value)){records[k]={value,model:p.model};improved=true}}
  state.money+=pay;return {pay,improved};

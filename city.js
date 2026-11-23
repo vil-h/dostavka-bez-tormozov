@@ -1,16 +1,12 @@
+import {outposts,travel,highway,bends,yard} from './geography.js';
 import {vehicles} from './vehicles.js';
 import {streetsX,streetsY,jobs,cargo,start,result,settle} from './game.js';
 const stops=[
  ['Депо',480,490],['Газетный киоск',660,490],['Почтамт',840,490],['Дом печати',1010,490],
  ['Речной рынок',150,170],['Мастерская',480,170],['Галерея',1170,170],['Порт',1530,170],
- ['Вокзал',150,830],['Кондитерская',1170,830],['Библиотека',840,830],['Склад',480,1150],['Маяк',1530,1150]
+ ['Вокзал',150,830],['Кондитерская',1170,830],['Библиотека',840,830],['Склад',480,1150],['Маяк',1530,1150],...outposts
 ];
 const pick=(list,rng)=>list[Math.floor(rng()*list.length)];
-function routeLength(a,b){
- // All pickup bays are twenty pixels south of their street centerline.
- if(a[2]===b[2])return Math.abs(a[1]-b[1]);
- return Math.abs(a[2]-b[2])+Math.min(...streetsX.map(x=>Math.abs(a[1]-x)+Math.abs(b[1]-x)));
-}
 export function freeRide(){
  const r=start(jobs[0]);
  return Object.assign(r,{free:true,j:null,offer:null,nextOffer:7,notice:'',noticeTime:0,offersSeen:0});
@@ -18,16 +14,18 @@ export function freeRide(){
 export function makeOffer(r,rng=Math.random){
  // The first dispatch near the depot introduces pickup on a single street.
  const intro=r.offersSeen===0&&Math.hypot(r.x-400,r.y-490)<150;
- const from=intro?stops[0]:pick(stops,rng);
- const kind=pick(intro?['Обычная доставка','Срочная доставка']:['Обычная доставка','Срочная доставка','Хрупкий заказ','Дальний рейс'],rng);
- const byDistance=stops.filter(p=>routeLength(from,p)>240).sort((a,b)=>routeLength(from,b)-routeLength(from,a));
- const to=pick(intro?stops.slice(1,4):kind==='Дальний рейс'?byDistance.slice(0,3):byDistance,rng);
- const type=pick(kind==='Хрупкий заказ'?['vase','tank','cake']:Object.keys(cargo),rng);
- const length=routeLength(from,to);
+ const near=stops.filter(p=>Math.hypot(p[1]-r.x,p[2]-r.y)<1450);
+ const terminal=outposts[2],localRun=!r.terminalOffered&&Math.hypot(r.x-terminal[1],r.y-terminal[2])<160;
+ const from=localRun?terminal:intro?stops[0]:pick(near.length?near:stops,rng);
+ const kind=localRun?'Дальний рейс':pick(intro?['Обычная доставка','Срочная доставка']:['Обычная доставка','Срочная доставка','Хрупкий заказ','Дальний рейс'],rng);
+ const byDistance=stops.filter(p=>travel(from,p).d>240).sort((a,b)=>travel(from,b).d-travel(from,a).d);
+ const to=localRun?outposts[1]:pick(intro?stops.slice(1,4):kind==='Дальний рейс'?byDistance.slice(0,3):byDistance,rng);
+ const type=localRun?'fridge':pick(kind==='Хрупкий заказ'?['vase','tank','cake']:Object.keys(cargo),rng);
+ const {d:length,cost,via}=travel(from,to);
  const cruise=type==='fridge'?85:type==='vase'||type==='cake'?92:110;
- const time=Math.ceil((14+length/(cruise*Math.min(1,vehicles[r.model].top))*2.3)*(kind==='Срочная доставка'?.80:1));
- const pay=Math.round((165+length*.25+(type==='parcel'?0:60))*(kind==='Обычная доставка'?1:1.3));
- return {kind,name:kind,type,from:from[0],place:to[0],start:from.slice(1),end:to.slice(1),time,pay,weather:'ясно'};
+ const time=Math.ceil((14+cost/(cruise*Math.min(1,vehicles[r.model].top))*2.3)*(kind==='Срочная доставка'?.80:1));
+ const pay=Math.round((165+Math.min(length,2500)*.24+Math.max(0,length-2500)*.047+(type==='parcel'?0:60))*(kind==='Обычная доставка'?1:1.3));
+ return {via,kind,name:kind,type,from:from[0],place:to[0],start:from.slice(1),end:to.slice(1),time,pay,weather:'ясно'};
 }
 export function dispatch(r,dt,rng=Math.random){
  if(!r.free)return;
@@ -40,6 +38,7 @@ export function dispatch(r,dt,rng=Math.random){
 export function skipOffer(r,rng=Math.random){if(!r.offer)return;r.offer=null;r.nextOffer=24+rng()*18}
 export function acceptOffer(r){
  if(!r.offer||r.j)return false;
+ if(r.offer.from===outposts[2][0])r.terminalOffered=true;
  Object.assign(r,{j:r.offer,offer:null,t:0,hits:0,hp:100,tilt:0,loaded:false,done:'',paid:false});return true;
 }
 export function closeDelivery(r,state,rng=Math.random){
@@ -90,4 +89,20 @@ export function advanceTraffic(cars,dt,time,player,rng=Math.random){
  if(c.pos>=c.len){if(c.curve)segment(c);else turn(c,rng)}
  pose(c);
  }
+}
+// Continuous closed lanes. Only nearby vehicles need an updated pose each step.
+const peripheralLoop=[...highway,...yard.slice(1),...bends.slice(2),[1530,810]];
+function lanePath(points){
+ const unit=(a,b)=>{const l=Math.hypot(b[0]-a[0],b[1]-a[1]);return [(b[0]-a[0])/l,(b[1]-a[1])/l]};
+ const lane=points.map((p,i)=>{const u=unit(points[(i+points.length-1)%points.length],p),v=unit(p,points[(i+1)%points.length]),d=18/(1+u[0]*v[0]+u[1]*v[1]);return [p[0]-(u[1]+v[1])*d,p[1]+(u[0]+v[0])*d]});
+ let total=0;const sections=lane.map((p,i)=>{const q=lane[(i+1)%lane.length],dx=q[0]-p[0],dy=q[1]-p[1],len=Math.hypot(dx,dy),base=total;total+=len;return {p,dx,dy,len,base}});
+ return {sections,total}
+}
+const lanes=[lanePath(peripheralLoop),lanePath([...peripheralLoop].reverse())];
+function roadPose(c){const lane=lanes[c.lane],s=lane.sections.find(s=>c.pos<s.base+s.len)||lane.sections[0],u=(c.pos-s.base)/s.len;c.x=s.p[0]+s.dx*u;c.y=s.p[1]+s.dy*u;c.a=Math.atan2(s.dy,s.dx)}
+export function roadTraffic(){return Array.from({length:8},(_,i)=>{const lane=i%2,c={lane,pos:lanes[lane].total*((i+.4)/8),speed:75+i*5,id:10+i};roadPose(c);return c})}
+export function advanceRoadTraffic(cars,dt,player){
+ for(const c of cars){const nearby=Math.hypot(player.x-c.x,player.y-c.y)<1700;
+ c.pos=(c.pos+dt*(c.x>7720&&c.y>1100?52:c.speed))%lanes[c.lane].total;
+ c.age=(c.age||0)+dt;if(nearby||c.age>.45){roadPose(c);c.age=0}}
 }

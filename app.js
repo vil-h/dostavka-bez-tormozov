@@ -1,3 +1,6 @@
+import {bounds} from './geography.js';
+import {atlas,drawRegion} from './countryside.js';
+import {roadTraffic,advanceRoadTraffic} from './city.js';
 import {events} from './challenges.js';
 import {newContest,advanceContest,finishOpponents,award} from './contest.js';
 import {eventsView,briefing,resultsView,clockText} from './contestUI.js';
@@ -16,6 +19,7 @@ let state=fresh(),saveWarning='';
 try{state=loadSave(localStorage.getItem(key))}catch{saveWarning='Хранилище недоступно в этом браузере.'}
 const sound=new Sound();sound.levels(state.sfx,state.music);
 function save(){try{localStorage.setItem(key,JSON.stringify(state))}catch{saveWarning='Браузер не сохранил прогресс.'}}
+let rural=[];
 let competition=null,eventTab='race';
 let run,scene='menu',last=performance.now(),acc=0,marks=[],flash=0;
 const keys=new Set(),pointers=new Map();
@@ -35,7 +39,7 @@ function shell(content,foot=''){
 const poster=()=>'<div class="poster"><canvas id="hero" width="620" height="255" aria-label="' + vehicles[state.selected].name + '"></canvas><span class="plate">' + vehicles[state.selected].name + '</span></div>';
 function menu(){
  scene='menu';run=null;competition=null;
- shell('<div class="hero"><div><span class="eyebrow">ВЕРСИЯ 1.4 · КОРОЛИ АСФАЛЬТА</span><h1>ДОСТАВКА<br> <em>БЕЗ ТОРМОЗОВ</em></h1><p>За рулём решаешь ты. Исследуй район или возьми заказ по пути.</p></div>'+poster()+'</div><article class="job"><small>СВОБОДНЫЙ ГОРОД</small><h3>Город в твоём распоряжении</h3><p>Езжай куда хочется. Диспетчер предложит работу в дороге.</p>'+button('Свободная езда','free','primary launch')+'</article><div class="menu">'+button('Соревнования','events')+button('Карьера · '+Object.keys(state.best).length+'/9','orders')+button('Гараж','garage')+button('Настройки','settings')+'</div>','WASD или стрелки · Пробел — ручник · Esc — пауза');
+ shell('<div class="hero"><div><span class="eyebrow">ВЕРСИЯ 1.5 · ЗА ГОРОД</span><h1>ДОСТАВКА<br> <em>БЕЗ ТОРМОЗОВ</em></h1><p>За рулём решаешь ты. Исследуй район или возьми заказ по пути.</p></div>'+poster()+'</div><article class="job"><small>СВОБОДНЫЙ ГОРОД</small><h3>Город в твоём распоряжении</h3><p>Езжай куда хочется. Диспетчер предложит работу в дороге.</p>'+button('Свободная езда','free','primary launch')+'</article><div class="menu">'+button('Соревнования','events')+button('Карьера · '+Object.keys(state.best).length+'/9','orders')+button('Гараж','garage')+button('Настройки','settings')+'</div>','WASD или стрелки · Пробел — ручник · Esc — пауза');
 }
 function page(name,title,body,foot=''){scene=name;shell('<section class="page"><div class="cardhead"><h2>'+title+'</h2>'+button('В меню','menu')+'</div>'+body+'</section>',foot)}
 function eventPage(body){
@@ -44,10 +48,10 @@ function eventPage(body){
 }
 function openEvents(){competition=null;run=null;eventPage(eventsView(state,eventTab))}
 function startEvent(id){
- competition=newContest(id,state.selected);run=competition.player;cars=[];marks=[];cityTime=0;flash=0;
+ competition=newContest(id,state.selected);run=competition.player;cars=[];rural=[];marks=[];cityTime=0;flash=0;
  for(const bot of competition.bots){const sprite=document.createElement('canvas');sprite.width=64;sprite.height=44;drawVehicle(sprite.getContext('2d'),32,22,0,bot.model,stockCar(bot.model).look);bot.sprite=sprite}
- const m=$('mapRoad').getContext('2d');m.drawImage(city,0,0,168,128);m.strokeStyle='#dfff64';m.lineWidth=2;m.beginPath();
- for(const [i,[x,y]] of competition.e.points.entries())i?m.lineTo(x/10,y/10):m.moveTo(x/10,y/10);m.stroke();
+ const m=$('mapRoad').getContext('2d');m.drawImage(city,0,0,168,128);if(competition.e.outside)atlas(m.canvas,null,null,competition.e.points,false);else {m.strokeStyle='#dfff64';m.lineWidth=2;m.beginPath();
+ for(const [i,[x,y]] of competition.e.points.entries())i?m.lineTo(x/10,y/10):m.moveTo(x/10,y/10);m.stroke()}
  resume();sound.fx('count');
 }
 function competitionHud(){
@@ -58,7 +62,7 @@ function competitionHud(){
  $('speed').textContent=Math.round(p.speed*.36)+' км/ч';$('wallet').textContent=e.type==='drift'?(d.total+Math.floor(d.chain))+' очк.':'Ворота '+p.gate+'/'+e.gates.length;
  $('guide').textContent=e.type==='drift'?'Серия +'+Math.floor(d.chain)+' · ×'+d.mult:e.type==='trial'?'Сплит '+clockText(p.split)+' · Рекорд '+(state.records[e.id]?.time?clockText(state.records[e.id].time.value):'—'):'Следуй через светящиеся ворота';
  $('startLight').hidden=s.count<=0&&s.t>.7;$('startLight').textContent=s.count>0?Math.ceil(s.count):'СТАРТ!';
- const dot=$('mapCar');dot.style.left=p.x/1680*100+'%';dot.style.top=p.y/1280*100+'%';dot.style.transform='translate(-50%,-50%) rotate('+p.a+'rad)';
+ const dot=$('mapCar');dot.style.left=p.x/(e.outside?bounds[0]:1680)*100+'%';dot.style.top=p.y/(e.outside?bounds[1]:1280)*100+'%';dot.style.transform='translate(-50%,-50%) rotate('+p.a+'rad)';
 }
 function contestFrame(input,dt){
  const s=competition,d=s.drift,lastCount=Math.ceil(s.count),lastPlace=s.place,oldChain=d.chain,oldMulti=d.mult;
@@ -122,10 +126,10 @@ async function fullscreen(){
 const fullButton=()=>button('На весь экран','fullscreen')+'<span id="fullscreenStatus" role="status"></span>';
 function settings(confirm=false){page('settings','Настройки',controlsForm()+fullButton()+'<div class="item">'+[['sfx','Эффекты'],['music','Музыка']].map(([k,n])=>'<label>'+n+' <output id="val-'+k+'">'+Math.round(state[k]*100)+'%</output><input type="range" data-volume="'+k+'" min="0" max="100" value="'+Math.round(state[k]*100)+'"></label>').join('')+'</div><div class="actions">'+(confirm?'Удалить деньги, рекорды и улучшения? '+button('Удалить','reset','danger')+button('Отмена','settings'):button('Сбросить прогресс','confirm','danger'))+'</div>')}
 let cars=[],cityTime=0,shownOffer=null;
-function enterCity(r){competition=null;run=r;run.model=state.selected;cars=createTraffic();cityTime=0;marks=[];flash=0;resume();sound.fx('start')}
+function enterCity(r){competition=null;run=r;run.model=state.selected;cars=createTraffic();rural=roadTraffic();atlas($('mapRoad'),null,null,null,false);cityTime=0;marks=[];flash=0;resume();sound.fx('start')}
 function begin(id){if(!jobs[id]||!available(jobs[id]))return;enterCity(start(jobs[id]))}
 function resume(){scene='drive';panel.innerHTML='';$('hud').hidden=false;last=performance.now();acc=0;updateHud()}
-function pause(){if(scene!=='drive')return;scene='pause';shell('<section class="page"><h2>На паузе</h2><p class="desc">'+(competition?.e.name||run.j?.name||'Свободная езда')+'</p><div class="menu">'+button('Продолжить','resume','primary')+fullButton()+(competition?button('Заново','startEvent:'+competition.e.id):run.free?button(run.j?'Гараж после доставки':parked(run)?'Гараж':'Остановись для гаража','garage','',!parked(run)):button('Заново','go:'+run.j.id))+button('В меню','menu')+'</div></section>','Таймер остановлен.')}
+function pause(){if(scene!=='drive')return;scene='pause';shell('<section class="page"><h2>На паузе</h2><p class="desc">'+(competition?.e.name||run.j?.name||'Свободная езда')+'</p><div class="menu">'+button('Продолжить','resume','primary')+button('Карта мира','atlas')+fullButton()+(competition?button('Заново','startEvent:'+competition.e.id):run.free?button(run.j?'Гараж после доставки':parked(run)?'Гараж':'Остановись для гаража','garage','',!parked(run)):button('Заново','go:'+run.j.id))+button('В меню','menu')+'</div></section>','Таймер остановлен.')}
 function finish(){
  scene='result';const ok=run.done==='success',v=result(run);settle(state,run);save();sound.fx(run.done);
  shell('<section class="page"><small class="eyebrow">РЕЙС '+number(run.j.id)+' · '+run.j.name+'</small><h2>'+(ok?'Доставлено!':run.hp<=0?'Груз разбит':'Время вышло')+'</h2><div class="item"><h3>'+(ok?'Оценка '+v.score+' / 100 · +'+v.pay+' ₽':'Попробуй другой маршрут')+'</h3><p>Время '+fmt(run.t)+' · Груз '+Math.round(run.hp)+'% · Удары '+run.hits+'</p></div><div class="menu">'+(ok&&run.j.id<jobs.length-1?button('Следующий рейс','go:'+(run.j.id+1),'primary'):'')+button('Повторить','go:'+run.j.id)+button('Гараж','garage')+button('В меню','menu')+'</div></section>');
@@ -139,7 +143,7 @@ panel.addEventListener('click',e=>{
  else if(action==='startEvent')startEvent(arg);
  else if(action==='go')begin(Number(arg));
  else if(action==='reset'){const {sfx,music,controls}=state;state=Object.assign(fresh(),{sfx,music,controls});save();settings()}
- else ({fullscreen,menu,free:()=>enterCity(freeRide()),garage,orders,resume,settings,confirm:()=>settings(true)})[action]?.()
+ else ({atlas:showAtlas,fullscreen,menu,free:()=>enterCity(freeRide()),garage,orders,resume,settings,confirm:()=>settings(true)})[action]?.()
 });
 panel.addEventListener('input',e=>{
  const el=e.target,k=el.dataset.control;if(!k)return;
@@ -148,20 +152,27 @@ panel.addEventListener('input',e=>{
  resetInput();applyControls();save();
 });
 panel.addEventListener('input',e=>{const k=e.target.dataset.volume;if(!k)return;state[k]=Number(e.target.value)/100;$('val-'+k).textContent=e.target.value+'%';sound.unlock();sound.levels(state.sfx,state.music);save()});
+function showAtlas(){
+ if(!run)return;scene='atlas';resetInput();
+ shell('<section class="page"><div class="cardhead"><h2>Карта мира</h2>'+button('К поездке','resume','primary')+'</div><canvas id="worldAtlas" width="840" height="290"></canvas><p>● Вы · оранжевая метка — текущая цель</p></section>');
+ const goal=competition?.e.gates[run.gate];
+ atlas($('worldAtlas'),[run.x,run.y],goal?[goal.x,goal.y]:run.j?target(run):null,competition?.e.points||run.j?.via);
+}
+$('atlas').onclick=showAtlas;
 $('pause').onclick=pause;
 $('home').onclick=menu;
 function answer(accept){if(scene!=='drive'||!run.offer)return;if(accept)acceptOffer(run);else skipOffer(run);updateHud()}
 $('accept').onclick=()=>answer(true);$('skip').onclick=()=>answer(false);
 const bindings={ArrowUp:'gas',KeyW:'gas',ArrowDown:'brake',KeyS:'brake',ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right',Space:'hand'};
-addEventListener('keydown',e=>{if(!e.repeat&&scene==='drive'&&run.offer&&['KeyE','KeyQ'].includes(e.code)){answer(e.code==='KeyE');e.preventDefault();return}if(e.code==='Escape'&&!e.repeat){if(scene==='pause'){sound.unlock();resume()}else pause()}if(scene==='drive'&&bindings[e.code]){e.preventDefault();keys.add(bindings[e.code])}});
+addEventListener('keydown',e=>{if(!e.repeat&&scene==='drive'&&run.offer&&['KeyE','KeyQ'].includes(e.code)){answer(e.code==='KeyE');e.preventDefault();return}if(e.code==='Escape'&&!e.repeat){if(scene==='pause'||scene==='atlas'){sound.unlock();resume()}else pause()}if(scene==='drive'&&bindings[e.code]){e.preventDefault();keys.add(bindings[e.code])}});
 addEventListener('keyup',e=>keys.delete(bindings[e.code]));
 applyControls();bindWheel($('wheel'),wheel,()=>state.controls.sensitivity);
 bindPedals(document.querySelectorAll('[data-key]'),pointers,()=>sound.unlock());
 addEventListener('blur',pause);document.addEventListener('visibilitychange',()=>{if(document.hidden){pause();sound.suspend()}});
 function updateHud(){
- $('navigator').hidden=!competition;$('startLight').hidden=true;$('hud').classList.toggle('racing',!!competition);
+ $('navigator').hidden=!(competition||run?.free);$('startLight').hidden=true;$('hud').classList.toggle('racing',!!competition);
  if(competition){competitionHud();return}
- const r=run,j=r.j,showTimer=j&&(!r.free||r.loaded);
+ const r=run;const locator=$('mapCar');locator.style.left=r.x/bounds[0]*100+'%';locator.style.top=r.y/bounds[1]*100+'%';locator.style.transform='translate(-50%,-50%) rotate('+r.a+'rad)';const j=r.j,showTimer=j&&(!r.free||r.loaded);
  const distance=j?Math.round(Math.hypot(target(r)[0]-r.x,target(r)[1]-r.y)/3):0;
  $('order').textContent=j?(r.loaded?'Доставка · '+j.place:'Погрузка · '+(j.from||cargo[j.type][0]))+' · '+distance+' м':'Свободная езда';
  $('clock').hidden=!showTimer;if(showTimer)$('clock').textContent=fmt(Math.ceil(j.time-r.t));
@@ -191,9 +202,9 @@ function draw(){
  const r=run,z=Math.max(.76,Math.min(1.55,Math.min(w,h)/435)),vw=w/z,vh=h/z;
  const cam=(v,size,total)=>size>=total?(total-size)/2:clamp(v-size/2,0,total-size);
  const mobile=w<=950&&h<=500;
- const axis=(position,velocity,size,total)=>mobile?clamp(cam(position+velocity*.32,size,total),position-size*.68,position-size*.32):cam(position+velocity*.25,size,total);
- const x=axis(r.x,r.vx,vw,1680),y=axis(r.y,r.vy,vh,1280);
- ctx.save();ctx.scale(z,z);ctx.translate(-x,-y);ctx.drawImage(city,0,0);
+ const axis=(position,velocity,size,total)=>mobile?clamp(cam(position+velocity*(.32+.18*clamp((r.x-1600)/400,0,1)),size,total),position-size*.68,position-size*.32):cam(position+velocity*.25,size,total);
+ const x=axis(r.x,r.vx,vw,bounds[0]),y=axis(r.y,r.vy,vh,bounds[1]);
+ ctx.save();ctx.scale(z,z);ctx.translate(-x,-y);drawRegion(ctx,x,y,vw,vh);if(x<1680&&y<1280)ctx.drawImage(city,0,0);
  for(const m of marks){ctx.fillStyle='#23262990';ctx.fillRect(m.x,m.y,3,4)}
  for(let i=0;i<streetsX.length;i++)for(let j=0;j<streetsY.length;j++){
  if(i!==2&&j!==1)continue;
@@ -201,7 +212,7 @@ function draw(){
  const lx=streetsX[i]-dx*49-dy*34,ly=streetsY[j]-dy*49+dx*34;
  ctx.fillStyle='#17201e';ctx.fillRect(lx-5,ly-5,10,10);ctx.fillStyle=green(i,j,d,cityTime)?'#a2f574':'#ff845b';ctx.fillRect(lx-3,ly-3,6,6)}
  }
- cars.forEach((car,i)=>drawCar(ctx,car.x,car.y,car.a,['#87b6b1','#bea7b2','#d4bd7e'][i%3]));
+ cars.concat(rural).filter(c=>c.x>x-50&&c.x<x+vw+50&&c.y>y-50&&c.y<y+vh+50).forEach((car,i)=>drawCar(ctx,car.x,car.y,car.a,['#87b6b1','#bea7b2','#d4bd7e'][i%3]));
  if(r.j?.weather==='ночь'||competition?.e.night){ctx.fillStyle='#12193c80';ctx.fillRect(x,y,vw,vh);ctx.save();ctx.translate(r.x,r.y);ctx.rotate(r.a);ctx.fillStyle='#fff5b237';ctx.beginPath();ctx.moveTo(12,-7);ctx.lineTo(115,-36);ctx.lineTo(115,36);ctx.lineTo(12,7);ctx.fill();ctx.restore()}
  if(competition){
  drawCourse(ctx,competition.e,r.gate+1,competition.t);drawTrails(ctx,competition.fx);
@@ -215,10 +226,10 @@ function draw(){
  if((r.j||gate)&&(sx<35||sy<95||sx>w-35||sy>h-95)){const ax=clamp(sx,28,w-28),ay=clamp(sy,110,h-102);ctx.save();ctx.translate(ax,ay);ctx.rotate(Math.atan2(ty-r.y,tx-r.x));ctx.fillStyle='#c8f85f';ctx.strokeStyle='#142117';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(14,0);ctx.lineTo(-9,-9);ctx.lineTo(-5,0);ctx.lineTo(-9,9);ctx.closePath();ctx.fill();ctx.stroke();ctx.restore()}
  if(flash>0){ctx.fillStyle='rgba(255,99,44,'+flash+')';ctx.fillRect(0,0,w,h)}
 }
-function tick(now){const elapsed=Math.min((now-last)/1000,.12);last=now;
+function tick(now){if(Math.round(window.visualViewport?.width||innerWidth)!==w||Math.round(window.visualViewport?.height||innerHeight)!==h)resize();const elapsed=Math.min((now-last)/1000,.12);last=now;
  if(scene==='drive'){acc+=elapsed;smoothSteering(wheel,elapsed);const input=driveInput(has,wheel,state.controls,true);
  $('knob').style.transform='translateX('+wheel.value*wheel.radius*.8+'px)';
- while(acc>=1/60&&!run.done&&!competition?.done){acc-=1/60;if(competition){contestFrame(input,1/60);continue}const loaded=run.loaded,hp=run.hp;cityTime+=1/60;advanceTraffic(cars,1/60,cityTime,run);step(run,input,1/60,state.garage[run.model].levels,cars);dispatch(run,1/60);if(!loaded&&run.loaded)sound.fx('pickup');if(run.hit){sound.fx('hit');flash=.21}if(Math.floor(hp/10)>Math.floor(run.hp/10))sound.fx('damage');
+ while(acc>=1/60&&!run.done&&!competition?.done){acc-=1/60;if(competition){contestFrame(input,1/60);continue}const loaded=run.loaded,hp=run.hp;cityTime+=1/60;advanceTraffic(cars,1/60,cityTime,run);advanceRoadTraffic(rural,1/60,run);step(run,input,1/60,state.garage[run.model].levels,cars.concat(rural));dispatch(run,1/60);if(!loaded&&run.loaded)sound.fx('pickup');if(run.hit){sound.fx('hit');flash=.21}if(Math.floor(hp/10)>Math.floor(run.hp/10))sound.fx('damage');
  if(run.drift>18){marks.push({x:run.x,y:run.y});if(marks.length>220)marks.shift()}}
  flash=Math.max(0,flash-elapsed);sound.drive(run.speed/300,input.gas&&!competition?.count,input.brake,clamp((run.drift-12)/55,0,1),vehicles[run.model].tone);draw();updateHud();if(competition?.done)endContest();else if(run.done){if(run.free){sound.fx(run.done);closeDelivery(run,state);save();updateHud()}else finish()}}
  requestAnimationFrame(tick)}

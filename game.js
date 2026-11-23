@@ -1,7 +1,8 @@
+import {bounds,avenue,cross,roadEdge} from './geography.js';
 import {restoreRecords} from './challenges.js';
 import {vehicles,stockCar,restoreGarage} from './vehicles.js';
-export const streetsX=[150,480,840,1170,1530];
-export const streetsY=[150,470,810,1130];
+export const streetsX=avenue;
+export const streetsY=cross;
 export const cargo={
   parcel:['Посылка','Лёгкая коробка позволяет разогнаться до максимума.'],
   cake:['Торт','Сбрасывай скорость перед поворотом, чтобы торт не накренился.'],
@@ -24,7 +25,7 @@ export const parts={engine:'Двигатель',brakes:'Тормоза',suspensi
 export const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 export function fresh(){
  const state={
-  schema:4,records:{},selected:'van',garage:{van:stockCar('van')},money:0,best:{},sfx:.65,music:.32,
+  schema:5,records:{},selected:'van',garage:{van:stockCar('van')},money:0,best:{},sfx:.65,music:.32,
   controls:{scheme:'wheel',sensitivity:1,size:1,opacity:.85,swap:false,auto:false}
  };
  // Compatibility for callers that read the original van's levels.
@@ -52,7 +53,7 @@ export function buy(s,k,id=s.selected){
  s.money-=cost(levels[k]);levels[k]++;return true;
 }
 export function edge(x,y){
- return Math.min(...streetsX.map(v=>Math.abs(x-v)-(v===840?58:42)),...streetsY.map(v=>Math.abs(y-v)-(v===470?58:42)));
+ return roadEdge(x,y);
 }
 export function start(j){
  const direction=Math.sign(j.end[0]-j.start[0])||1;
@@ -85,7 +86,7 @@ export function step(r,input,dt,levels,cars=[]){
  r.vx=(c+(nc-c)*follow)*forward-s*side;r.vy=(s+(ns-s)*follow)*forward+c*side;
  r.speed=Math.hypot(r.vx,r.vy);r.drift=Math.abs(side);
  const nx=r.x+r.vx*dt,ny=r.y+r.vy*dt;
- const blocked=(x,y)=>edge(x,y)>9||x<24||y<24||x>1656||y>1256;
+ const blocked=(x,y)=>edge(x,y)>9||x<24||y<24||x>bounds[0]-24||y>bounds[1]-24;
  if(blocked(nx,ny)){impact(r,r.speed,levels);if(!blocked(nx,r.y))r.x=nx;if(!blocked(r.x,ny))r.y=ny;r.vx*=-.23;r.vy*=-.23}
  else{r.x=nx;r.y=ny}
  for(const car of cars)if(Math.hypot(r.x-car.x,r.y-car.y)<26&&r.cool<=0){impact(r,Math.max(55,r.speed),levels);r.vx*=-.35;r.vy*=-.35;break}
