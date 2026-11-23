@@ -31,7 +31,7 @@ function observer(){
  try{const p=await browser.newPage({viewport:{width:844,height:390}}),errors=[];p.on('pageerror',e=>errors.push(e.message));
  await p.route(url,async r=>{
   const html=process.argv[2]?await (await r.fetch()).text():fs.readFileSync(path.join(__dirname,'../dist/index.html'),'utf8');
-  assert.ok(html.includes('ВЕРСИЯ 1.6.1'));
+  assert.ok(html.includes('ВЕРСИЯ 1.6.2'));
   const src=html.replace('const x=axis(r.x,r.vx,vw,bounds[0]),y=axis(r.y,r.vy,vh,bounds[1]);',"const watch=window.observeCar||r; const x=cam(watch.x,vw,bounds[0]),y=cam(watch.y,vh,bounds[1]);")
    .replace('Math.abs(c.x-r.x)>vw||Math.abs(c.y-r.y)>vh','Math.abs(c.x-watch.x)>vw||Math.abs(c.y-watch.y)>vh');
   const at=src.lastIndexOf('</script>');await r.fulfill({contentType:'text/html',body:src.slice(0,at)+'\n('+observer.toString()+')();\n'+src.slice(at)})
