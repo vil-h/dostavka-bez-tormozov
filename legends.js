@@ -1,5 +1,5 @@
-import {highway,bends,yard} from './geography.js';
-import {prepare,pointAt} from './routing.js';
+import {highway,bends,yard,roadEdge} from './geography.js';
+import {prepare,pointAt,project} from './routing.js';
 const clamp=(n,a,b)=>Math.min(b,Math.max(a,n));
 const hub=[1060,470],cityLoop=[[1530,470],[1530,1130],[480,1130],[480,470]],country=[...highway,...bends.slice(1),[840,1130],[840,470]];
 const courses=[country,cityLoop,[...highway,...yard.slice(1),...bends.slice(2),[480,1130],[480,470]]].map(path=>{const r={points:[hub,...path,hub],outside:true};prepare(r,[]);return r});
@@ -7,33 +7,99 @@ export const legends={spark:{name:'Искра',car:'Искра GT',color:'#47d8f
 function pose(c){const p=pointAt(c.route,c.s);return {x:p.x-p.dy*c.lane,y:p.y+p.dx*c.lane,a:Math.atan2(p.dy,p.dx)}}
 export function createLegends(player){
  if(!player.free&&player.j.id<5)return [];
- return Object.keys(legends).map((id,i)=>{const forestStart=id==='fox'&&player.j?.id===11,r=courses[forestStart?2:i],c={id,route:r,s:forestStart?r.length*.49:i?1250:r.length-1500,lane:16,speed:i?130:190,pass:0,laps:0};
+ return Object.keys(legends).map((id,i)=>{const forestStart=id==='fox'&&player.j?.id===11,r=courses[forestStart?2:i],c={id,route:r,s:forestStart?r.length*.49:i?1250:r.length-1500,lane:16,speed:i?130:190,phase:"FOLLOW",phaseTime:0,cooldown:0,offset:16,yaw:0,grip:1,laps:0};
  for(let tries=0;tries<8;tries++){Object.assign(c,pose(c));if(Math.hypot(c.x-player.x,c.y-player.y)>1050)break;if(tries===3)c.route=courses[2];c.s=(c.s+1300)%c.route.length}return c})
 }
+const styles={
+ spark:{top:370,accel:158,brake:350,turnSpeed:112,steer:4,driftAngle:1.48,room:600},
+ fox:{top:325,accel:155,brake:405,turnSpeed:119,steer:5,driftAngle:.65,room:470}
+};
+const angle=x=>Math.atan2(Math.sin(x),Math.cos(x));
+const approach=(a,b,limit)=>a+clamp(b-a,-limit,limit);
+function phase(c,name){if(name!==c.phase){c.phase=name;c.phaseTime=0}}
+function trafficPlan(c,objects,p,gap,style){
+ const own=16,other=-22;let lead=null,clear=true,merge=true,crossLimit=Infinity;
+ const horizon=Math.max(style.room,c.speed*2.4);
+ const relative=o=>{
+  const x=o.x-c.x,y=o.y-c.y;
+  return {o,d:x*p.dx+y*p.dy,lane:c.lane-x*p.dy+y*p.dx,
+   speed:(o.speed||0)*Math.cos((o.a??c.a)-Math.atan2(p.dy,p.dx))};
+ };
+ for(const o of objects){
+  if(o===c||Math.abs(o.x-c.x)>horizon+220||Math.abs(o.y-c.y)>horizon+220)continue;
+  const v=relative(o);
+  if(Math.abs(v.lane-own)<25){
+   if(v.d>0&&(!lead||v.d<lead.d))lead=v;
+   if(v.d>-62&&v.d<56)merge=false;
+  }
+  if(Math.abs(v.lane-other)<24&&v.d>-60&&v.d<horizon+Math.max(0,-v.speed)*1.6)clear=false;
+  if(Math.abs(v.lane-c.lane)<25&&v.d>=0&&v.d<120&&o!==c.leader)
+   crossLimit=Math.min(crossLimit,Math.max(0,v.speed)+(Math.max(0,v.d-49))*1.7);
+ }
+ const room=p.x>1680&&gap>style.room&&roadEdge(p.x,p.y)<-37;
+ const tracked=c.leader&&relative(c.leader);
+ switch(c.phase){
+ case 'FOLLOW':
+  if(c.cooldown<=0&&lead&&!lead.o.route&&lead.d<horizon*.65&&lead.speed>=-3&&lead.speed<style.top-28&&room){
+   c.leader=lead.o;phase(c,'PREPARE')
+  }break;
+ case 'PREPARE':
+  if(!clear||!room||!tracked||tracked.d<40)phase(c,'ABORT');
+  else if(c.phaseTime>.13)phase(c,'PULL_OUT');break;
+ case 'PULL_OUT':case 'PASS':
+  if(!clear||(gap<105&&c.phase!=='PASS')){phase(c,'ABORT');break}
+  if(c.phase==='PULL_OUT'&&c.lane<-15)phase(c,'PASS');
+  if(tracked&&tracked.d<-63&&merge)phase(c,'RETURN');break;
+ case 'RETURN':case 'ABORT':
+  if(Math.abs(c.lane-own)<3&&Math.abs(c.offset-own)<1){phase(c,'FOLLOW');c.leader=null;c.cooldown=1.5}break;
+ }
+ const stayOut=c.phase==='PASS'||c.phase==='PULL_OUT'||(c.phase==='ABORT'&&c.lane<-3&&!merge);
+ c.aim=stayOut?other:own;
+ let limit=crossLimit;
+ if(lead&&Math.abs(c.lane-own)<29)limit=Math.min(limit,Math.max(0,lead.speed+(lead.d-51)*1.7));
+ if(c.phase==='ABORT'&&stayOut&&tracked)limit=Math.min(limit,Math.max(0,tracked.speed-55));
+ c.emergency=limit<c.speed-65;
+ return limit;
+}
+function drive(c,dt,objects,near,rng){
+ const r=c.route,style=styles[c.id];
+ c.s=project(r,c.x,c.y,Math.max(0,c.s-75),Math.min(r.length,c.s+90)).s;
+ if(c.s>=r.length-2){c.laps++;c.route=c.id==='spark'?courses[rng()<.8?0:2]:courses[rng()<.55?1:2];c.s=0}
+ const p=pointAt(c.route,c.s);
+ c.lane=(c.y-p.y)*p.dx-(c.x-p.x)*p.dy;
+ c.phaseTime+=dt;c.cooldown-=dt;c.planIn=(c.planIn||0)-dt;
+ if(c.planIn<=0){
+  c.planIn=near?.075:.20;
+  const turn=c.route.turns.find(t=>t.s>c.s-65);
+  const gap=turn?turn.s-c.s:Infinity,bend=turn?.angle||0;
+  const apex=style.turnSpeed/Math.sqrt(Math.max(.12,bend));
+  c.handbrake=bend>=style.driftAngle&&gap<58&&gap>-38&&c.speed>72&&c.phase==='FOLLOW';
+  const space=clamp(-roadEdge(p.x,p.y)/55,.65,1);
+  c.target=Math.min(style.top*(.73+.27*space),Math.sqrt(apex*apex*space+2*style.brake*.79*Math.max(0,gap-80)),
+   trafficPlan(c,objects,p,turn?gap:Infinity,style));
+ }
+ c.offset=approach(c.offset,c.aim??16,dt*58);
+ const look=clamp(20+c.speed*.14,23,72);
+ const goal=pointAt(c.route,Math.min(c.route.length,c.s+look));
+ const extra=Math.max(0,c.s+look-c.route.length);
+ const heading=Math.atan2(goal.y+extra*goal.dy+goal.dx*c.offset-c.y,goal.x+extra*goal.dx-goal.dy*c.offset-c.x);
+ c.motion??=c.a;
+ const error=angle(heading-c.motion);
+ c.grip=approach(c.grip,c.handbrake?.35:1,dt*(c.handbrake?4:2.4));
+ const steer=clamp(error*style.steer-angle(c.a-c.motion)*2.2,-2.35,2.35);
+ c.yaw=approach(c.yaw,steer,dt*9);
+ c.a=angle(c.a+c.yaw*dt*Math.min(1,c.speed/45));
+ c.speed=approach(c.speed,c.target,dt*(c.target<c.speed?(c.emergency?620:style.brake):style.accel));
+ c.motion=angle(c.motion+angle(c.a-c.motion)*(1-Math.exp(-dt*(3+16*c.grip*c.grip))));
+ c.slip=angle(c.a-c.motion);c.sideSpeed=c.speed*Math.sin(c.slip);
+ c.vx=c.speed*Math.cos(c.motion);c.vy=c.speed*Math.sin(c.motion);
+ c.x+=c.vx*dt;c.y+=c.vy*dt;
+}
 export function moveLegends(list,dt,player,traffic,rng=Math.random){
+ const objects=[...traffic,player,...list];
  for(const c of list){
- const near=Math.hypot(c.x-player.x,c.y-player.y)<1700; c.elapsed=(c.elapsed||0)+dt;if(!near&&c.elapsed<.12)continue;const frame=c.elapsed;c.elapsed=0;const dx=Math.cos(c.a),dy=Math.sin(c.a);
- const turn=c.route.turns.find(t=>t.s>=c.s-15),gap=turn?turn.s-c.s:Infinity,sharp=turn?.angle||0;
- const top=c.id==='spark'?328:267,apex=(c.id==='spark'?145:165)/Math.sqrt(Math.max(.22,sharp));
- let target=Math.min(top,Math.sqrt(apex**2+370*Math.max(0,gap-50))),lead=null,leadD=Infinity,clear=true,alongside=false;
- if(near){
- for(const o of [...traffic,player,...list]){if(o===c)continue;
- const x=o.x-c.x,y=o.y-c.y,d=x*dx+y*dy,side=-x*dy+y*dx;
- if(d>0&&d<Math.max(120,c.speed*.95)&&Math.abs(side+c.lane-16)<25&&d<leadD){lead=o;leadD=d}
- if(d>=-55&&d<=38&&Math.abs(side+c.lane-16)<25)alongside=true;
- if(d>-55&&d<c.speed*1.5+90&&Math.abs(side+c.lane+20)<27)clear=false}
- const leadSpeed=lead?(lead.speed||0)*Math.cos((lead.a??c.a)-c.a):0;
- if(lead&&target>leadSpeed+12&&leadSpeed>=-5&&clear&&gap>120&&leadD>20)c.pass=.9;
- else if(c.pass&&alongside&&clear)c.pass=.55;
- else c.pass=Math.max(0,c.pass-frame);
- if(!clear)c.pass=0;
- if(lead&&(c.pass===0||Math.abs(c.lane-16)<24))target=Math.min(target,Math.max(0,(leadD-40)*1.8));
- }else c.pass=0;
- const correction=c.id==='fox'&&c.laps%3===2&&gap<100?Math.sin(Math.max(0,gap)*.031)*3:0;
- const desired=c.pass>0?-21:16+correction;c.lane+=clamp(desired-c.lane,-64*frame,64*frame);
- const speed=c.speed+clamp(target-c.speed,-340*frame,(c.id==='spark'?166:146)*frame);
- const oldS=c.s,oldRoute=c.route;c.s+=speed*frame;
- if(c.s>=c.route.length){c.s-=c.route.length;c.laps++;c.route=c.id==='spark'?courses[rng()<.8?0:2]:courses[rng()<.55?1:2]}
- const p=pose(c);if(near&&traffic.concat(player,list).some(o=>o!==c&&Math.hypot(p.x-o.x,p.y-o.y)<27&&Math.hypot(p.x-o.x,p.y-o.y)<Math.hypot(c.x-o.x,c.y-o.y))){if(oldRoute!==c.route)c.laps--;c.route=oldRoute;c.s=oldS;c.speed=0;continue}
- c.speed=speed;Object.assign(c,p)
- }}
+  const near=Math.hypot(c.x-player.x,c.y-player.y)<1700;
+  let left=dt;
+  while(left>1e-8){const frame=Math.min(left,1/60);drive(c,frame,objects,near,rng);left-=frame}
+ }
+}

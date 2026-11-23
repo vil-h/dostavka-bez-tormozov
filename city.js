@@ -79,14 +79,19 @@ function turn(c,rng){
  c.d=next;c.curve=true;c.pos=0;
 }
 export function advanceTraffic(cars,dt,time,player,rng=Math.random,racers=[]){
+ // Reserve the crossing before entry so two turning vehicles cannot deadlock nose to nose.
+ const occupied=new Set(cars.filter(c=>c.curve).map(c=>c.i+','+c.j));
  for(const c of cars){
  const dx=Math.cos(c.a),dy=Math.sin(c.a);
  const ahead=o=>{const x=o.x-c.x,y=o.y-c.y,along=x*dx+y*dy;return along>0&&along<54&&Math.abs(x*dy-y*dx)<17};
- const stop=cars.some(o=>o!==c&&ahead(o))||player&&ahead(player)||racers.some(ahead);
+ const stop=cars.some(o=>o!==c&&ahead(o)&&(!c.curve||Math.cos(o.a-c.a)>.7||Math.hypot(o.x-c.x,o.y-c.y)<26))||player&&ahead(player)||racers.some(ahead);
  const red=!c.curve&&(c.toI===2||c.toJ===1)&&!green(c.toI,c.toJ,c.d,time);
- const limit=stop?0:red?Math.min(c.max,Math.max(0,(c.len-c.pos-5)*2)):c.curve?48:c.max;
+ const junction=c.toI+','+c.toJ;
+ const waiting=!c.curve&&occupied.has(junction);
+ const limit=stop?0:(red||waiting)?Math.min(c.max,Math.max(0,(c.len-c.pos-5)*2)):c.curve?48:c.max;
  c.speed+=Math.max(-220*dt,Math.min(80*dt,limit-c.speed));c.pos+=c.speed*dt;
- if(c.pos>=c.len){if(c.curve)segment(c);else turn(c,rng)}
+ if(waiting&&c.pos>=c.len){c.pos=c.len-.01;c.speed=0}
+ if(c.pos>=c.len){if(c.curve)segment(c);else {turn(c,rng);occupied.add(junction)}}
  pose(c);
  }
 }
