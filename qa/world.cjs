@@ -49,6 +49,6 @@ const [engine='chromium',live]=process.argv.slice(2),out=path.resolve(process.en
  const text=await require('./drive-race.cjs')(page,e,pace);console.log(engine,id,text.replace(/\n/g,' ').slice(0,240));
  assert.ok(/\+[1-9]\d* ₽/.test(text));await act('menu');return text
  }
- await race('express',295);await race('serp',270);await page.reload();const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('dostavka-bez-tormozov.v1')));assert.ok(stored.records.express151.time.value>0&&stored.records.serp151.time.value>0);await act('events');await act('category:records');assert.ok((await page.locator('.scorelist').innerText()).includes('Молния'));await act('menu');
+ await race('express',295);await race('serp',270);await page.reload();const stored=await page.evaluate(()=>JSON.parse(localStorage.getItem('dostavka-bez-tormozov.v1')));assert.ok(stored.records.express152_normal.time.value>0&&stored.records.serp151.time.value>0);await act('events');await act('category:records');assert.ok((await page.locator('.scorelist').innerText()).includes('Молния'));await act('menu');
  assert.deepEqual(errors,[]);console.log(engine,'PASS');
  }finally{await b.close()}})().catch(e=>{console.error(e);process.exitCode=1});

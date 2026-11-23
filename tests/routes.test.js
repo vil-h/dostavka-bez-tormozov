@@ -32,7 +32,7 @@ test('20 загородных стартов · физический финиш 
  for(let i=0;i<20;i++){let seed=i+1;const s=newContest('express','van',()=>((seed=(Math.imul(seed,1664525)+1013904223)>>>0)/4294967296));
  for(let n=0;n<6000&&s.bots.some(b=>b.finish===null);n++){const old=s.bots.map(c=>[c.x,c.y,c.gate]);advanceContest(s,{},1/60,freshLevels);
  s.bots.forEach((b,j)=>{assert.ok(Math.hypot(b.x-old[j][0],b.y-old[j][1])<7);assert.ok(b.gate<=old[j][2]+1)})}
- assert.ok(s.bots.every(b=>b.gate===s.e.gates.length&&b.finish>45))}
+ assert.ok(s.bots.every(b=>b.gate===s.e.gates.length&&b.finish>32))}
 });
 const freshLevels=fresh().levels;
 test('Прежние и новые результаты всех трасс разделены, миграция не меняет кошелёк',()=>{

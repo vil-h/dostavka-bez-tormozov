@@ -24,5 +24,5 @@ try{const ctx=await b.newContext({viewport:{width:844,height:390},isMobile:true,
  const recover=page.locator('#recover');assert.ok(await recover.isVisible());await recover.click();assert.equal(parseInt(await page.locator('#speed').innerText()),0);await page.locator('#home').click()}else await act('menu')
  }
  await page.reload();await act('events');await act('category:records');assert.ok((await page.locator('.scorelist').innerText()).includes('Архив 1.5'));const records=await page.evaluate(()=>JSON.parse(localStorage.getItem('dostavka-bez-tormozov.v1')).records);
- for(const id of ['sprint','night','express','serp','clock'])assert.ok(records[id+'151'].time.value>0);assert.equal(records.sprint.time.value,11);assert.deepEqual(errors,[]);console.log(engine,'PASS')
+ for(const id of ['sprint','night','express','serp','clock'])assert.ok(records[events[id].rivals?id+'152_normal':id+'151'].time.value>0);assert.equal(records.sprint.time.value,11);assert.deepEqual(errors,[]);console.log(engine,'PASS')
 }finally{await b.close()}})().catch(e=>{console.error(e);process.exitCode=1});

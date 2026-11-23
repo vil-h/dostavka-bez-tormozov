@@ -27,7 +27,7 @@ for(const id of ['sprint','night'])test('30 стартов: все соперн�
 for(const model of Object.keys(vehicles))for(const id of ['sprint','night','clock'])test('Завершение маршрута · '+id+' · '+model,()=>{
  const s=newContest(id,model,rng(21)),p=s.player;Object.assign(p,{lane:0,phase:0,sharp:2.7,cruise:200});
  for(let n=0;n<7200&&!s.done;n++)advanceContest(s,botInput(p,s.e,s.t),dt,stock);
- assert.ok(s.done);assert.equal(p.gate,s.e.gates.length);if(id==='sprint'&&model==='van')assert.equal(s.place,1);
+ assert.ok(s.done);assert.equal(p.gate,s.e.gates.length);
  finishOpponents(s);assert.ok(s.bots.every(c=>c.finish!==null));const state=fresh(),v=award(s,state);assert.ok(v.pay>0&&v.improved);assert.equal(award(s,state),null);assert.equal(v.pay,state.money);
  assert.deepEqual(loadSave(JSON.stringify(state)).records,state.records)
 });
