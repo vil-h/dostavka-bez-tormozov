@@ -22,7 +22,7 @@ function observer(){
      if(Math.abs(on.x-racer.x-330)<12&&Math.abs(on.y-452)<3)break}rural.push(on)
    }
   }
-  window.observeCar=racer;
+  window.observeCar=racer;window.observedPhases=[];
  };
  window.readStreet=()=>({x:racer.x,y:racer.y,a:racer.a,vx:racer.vx,vy:racer.vy,v:racer.speed,phase:racer.phase,lane:racer.lane,s:racer.s,slow:slow?.x,skid:streetTracks.length});
 }
@@ -31,10 +31,11 @@ function observer(){
  try{const p=await browser.newPage({viewport:{width:844,height:390}}),errors=[];p.on('pageerror',e=>errors.push(e.message));
  await p.route(url,async r=>{
   const html=process.argv[2]?await (await r.fetch()).text():fs.readFileSync(path.join(__dirname,'../dist/index.html'),'utf8');
-  assert.ok(html.includes('ВЕРСИЯ 1.6.2'));
+  assert.ok(html.includes('ВЕРСИЯ 1.6.3'));
   const src=html.replace('const x=axis(r.x,r.vx,vw,bounds[0]),y=axis(r.y,r.vy,vh,bounds[1]);',"const watch=window.observeCar||r; const x=cam(watch.x,vw,bounds[0]),y=cam(watch.y,vh,bounds[1]);")
    .replace('Math.abs(c.x-r.x)>vw||Math.abs(c.y-r.y)>vh','Math.abs(c.x-watch.x)>vw||Math.abs(c.y-watch.y)>vh');
-  const at=src.lastIndexOf('</script>');await r.fulfill({contentType:'text/html',body:src.slice(0,at)+'\n('+observer.toString()+')();\n'+src.slice(at)})
+  const instrumented=src.replace("moveLegends(roam,1/60,run,traffic);","moveLegends(roam,1/60,run,traffic);if(window.observeCar&&window.observedPhases.at(-1)!==window.observeCar.phase)window.observedPhases.push(window.observeCar.phase);");
+  const at=instrumented.lastIndexOf('</script>');await r.fulfill({contentType:'text/html',body:instrumented.slice(0,at)+'\n('+observer.toString()+')();\n'+instrumented.slice(at)})
  });
  await p.clock.install();await p.goto(url);await p.clock.pauseAt(new Date(Date.now()+2000));await p.locator('[data-action=free]').click();
  for(const name of ['pass1','pass2','blocked','drift1','drift2','fast']){
@@ -55,7 +56,7 @@ function observer(){
   console.log(name,{phases,max,maxSlip,side,back,maxLaneRate,clearance,min});
   if(frames.length){const dir=path.join(out,name);fs.mkdirSync(dir,{recursive:true});frames.forEach((data,i)=>fs.writeFileSync(path.join(dir,i+'.png'),Buffer.from(data,'base64')))}
   if(name.startsWith('pass')){assert.ok(phases.includes('PASS')&&phases.includes('RETURN')&&phases.at(-1)==='FOLLOW');assert.ok(clearance>58)}
-  if(name==='blocked')assert.ok(phases.includes('ABORT'));
+  if(name==='blocked')assert.ok(await p.evaluate(()=>window.observedPhases.includes('ABORT')));
   if(name.startsWith('drift'))assert.ok(maxSlip>5&&side>3&&back);
   if(name==='fast')assert.ok(max>=120&&min<100)
  }assert.deepEqual(errors,[]);console.log('PASS')

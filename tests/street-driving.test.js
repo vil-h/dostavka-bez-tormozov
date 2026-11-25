@@ -15,7 +15,7 @@ for(const id of ['spark','fox'])test(id+' accelerates on the highway, brakes and
   const x=c.x,y=c.y;moveLegends([c],1/60,spectator,[],()=>.95);
   const dx=c.x-x,dy=c.y-y;assert.ok(Math.hypot(dx,dy)<6.3);
   assert.ok(roadEdge(c.x,c.y)<3);top=Math.max(top,c.speed*.36);
-  if(Math.abs(c.slip)>.14&&c.handbrake){
+  if(Math.abs(c.slip)>.14&&c.driftState==='HOLD'){
    assert.ok(Math.abs(60*(dy*Math.cos(c.a)-dx*Math.sin(c.a)))>9);
    slide=true;lowest=Math.min(lowest,c.speed*.36)
   }else if(slide&&Math.abs(c.slip)<.035&&c.speed>190)recovered=true
