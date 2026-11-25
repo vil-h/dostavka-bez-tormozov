@@ -1,3 +1,4 @@
+import {lineOffset,cornerLimit,fitLane} from './cornering.js';
 import {blockerAhead,recovery,offscreenRecovery} from './recovery.js';
 import {highway,bends,yard,roadEdge} from './geography.js';
 import {prepare,pointAt,project} from './routing.js';
@@ -12,8 +13,8 @@ export function createLegends(player){
  for(let tries=0;tries<8;tries++){Object.assign(c,pose(c));if(Math.hypot(c.x-player.x,c.y-player.y)>1050)break;if(tries===3)c.route=courses[2];c.s=(c.s+1300)%c.route.length}return c})
 }
 const styles={
- spark:{top:370,accel:158,brake:350,turnSpeed:112,steer:4,driftAngle:.24,room:600},
- fox:{top:325,accel:155,brake:405,turnSpeed:119,steer:5,driftAngle:.23,room:470}
+ spark:{top:370,accel:158,brake:350,lateral:350,maxYaw:1.75,driftAngle:.24,room:600},
+ fox:{top:325,accel:155,brake:405,lateral:380,maxYaw:1.90,driftAngle:.23,room:470}
 };
 const angle=x=>Math.atan2(Math.sin(x),Math.cos(x));
 const approach=(a,b,limit)=>a+clamp(b-a,-limit,limit);
@@ -90,23 +91,22 @@ function drive(c,dt,objects,near,rng,player){
  c.lane=(c.y-p.y)*p.dx-(c.x-p.x)*p.dy;
  c.phaseTime+=dt;c.cooldown-=dt;c.planIn=(c.planIn||0)-dt;
  if(c.planIn<=0){
-  c.planIn=near?.075:.20;
+  c.planIn=near?.065:.14;
   const turn=c.route.turns.find(t=>t.s>c.s-65);
   const gap=turn?turn.s-c.s:Infinity,bend=turn?.angle||0;
-  const apex=style.turnSpeed/Math.sqrt(Math.max(.12,bend));
-
-  const space=clamp(-roadEdge(p.x,p.y)/55,.65,1);
-  c.target=Math.min(style.top*(.73+.27*space),Math.sqrt(apex*apex*space+2*style.brake*.79*Math.max(0,gap-80)),
-   trafficPlan(c,objects,p,turn?gap:Infinity,style));
+  const trafficSpeed=trafficPlan(c,objects,p,gap,style);
+  c.openLine=c.phase==='FOLLOW'&&!c.escape&&!objects.some(o=>o!==c&&Math.hypot(o.x-c.x,o.y-c.y)<Math.max(230,c.speed*1.25));
+  c.target=Math.min(cornerLimit(c,style,c.openLine),trafficSpeed);
   c.obstacle=blockerAhead(c,objects)||c.limitingCar;
   if(c.phase==='ABORT'&&c.leader&&Math.abs(c.lane-16)>10&&c.target<8)c.obstacle??=c.leader;
   const safe=turn&&bend>=style.driftAngle&&c.speed>55&&c.phase==='FOLLOW'&&!c.obstacle&&!c.escape&&roadEdge(c.x,c.y)<-12&&Math.abs(c.slip||0)<.60;
   const fox=c.id==='fox';
   const radius=85/Math.max(.2,bend);
-  const entry=Math.min(82,40+c.speed*.12+radius*.05);
-  c.driftState=!safe||gap>entry||gap<-55?'EXIT':gap>15?'INITIATE':gap>-(fox?30:20)?'HOLD':'COUNTERSTEER';
-  c.handbrake=['INITIATE','HOLD'].includes(c.driftState);
-  c.slideGoal=c.handbrake?(turn.dir==='НАПРАВО'?1:-1)*Math.min(fox?.36:.27,(fox?.18:.13)+bend*.14):0;
+  const entry=Math.min(106,52+c.speed*.16+radius*.05);
+  if(gap<entry+40)c.planIn=.045;
+  c.driftState=!safe||gap>entry||gap<-55?'EXIT':gap>entry-22?'INITIATE':gap>-(fox?32:26)?'HOLD':'COUNTERSTEER';
+  c.handbrake=c.driftState==='INITIATE';
+  c.slideGoal=(c.handbrake||c.driftState==='HOLD')?(turn.dir==='НАПРАВО'?1:-1)*Math.min(fox?.38:.32,(fox?.24:.21)+bend*.13):0;
  }
  const escape=recovery(c,dt,c.obstacle,objects,player);
  if(offscreenRecovery(c,player,objects,d=>{const s=(c.s+d)%c.route.length,p=pose({...c,s,lane:16});return {...p,s,motion:p.a,offset:16,yaw:0,slip:0,phase:'FOLLOW',leader:null,planIn:0}}))return;
@@ -116,19 +116,30 @@ function drive(c,dt,objects,near,rng,player){
  }
  if(escape){phase(c,'FOLLOW');c.leader=null;c.handbrake=false;c.slideGoal=0;c.cooldown=3;c.target=26}
  c.offset=approach(c.offset,escape?16+escape.offset:c.aim??16,dt*58);
- const look=clamp(20+c.speed*.14,23,72);
+ const look=clamp(19+c.speed*.17,26,82);
+ c.lineBlend=approach(c.lineBlend||0,c.openLine&&!escape?1:0,dt*2.4);
+ const normal=c.phase==='FOLLOW'&&!escape?lineOffset(c.route,c.s+look,false):16;
+ const lane=fitLane(c.route,c.s+look,c.offset+normal-16+c.lineBlend*(lineOffset(c.route,c.s+look)-normal));
  const goal=pointAt(c.route,Math.min(c.route.length,c.s+look));
  const extra=Math.max(0,c.s+look-c.route.length);
- const heading=Math.atan2(goal.y+extra*goal.dy+goal.dx*c.offset-c.y,goal.x+extra*goal.dx-goal.dy*c.offset-c.x);
+ const heading=Math.atan2(goal.y+extra*goal.dy+goal.dx*lane-c.y,goal.x+extra*goal.dx-goal.dy*lane-c.x);
  c.motion??=c.a;
  const error=angle(heading-c.motion);
- c.grip=approach(c.grip,c.handbrake?(c.id==='fox'?.17:.23):1,dt*(c.handbrake?4:2.4));
- const steer=clamp(error*style.steer+(c.slideGoal||0)*(c.id==='fox'?4.3:3.4)-angle(c.a-c.motion)*(c.driftState==='COUNTERSTEER'?4:2.2),-2.35,2.35);
- c.yaw=approach(c.yaw,steer,dt*9);
+ c.grip=approach(c.grip,c.handbrake?(c.id==='fox'?.20:.26):c.driftState==='HOLD'?(c.id==='fox'?.21:.24):1,dt*(c.handbrake?4:2.4));
+ const tireRate=1.65+17*c.grip*c.grip;
+ const turnRate=clamp(2*c.speed*Math.sin(error)/look,-style.maxYaw,style.maxYaw);
+ const sliding=c.driftState==='HOLD'||c.handbrake;
+ const slipTarget=clamp(turnRate/tireRate*.65+(sliding?c.slideGoal*.86:0),-.46,.46);
+ const correction=angle(slipTarget-angle(c.a-c.motion));
+ const steer=clamp(turnRate+correction*(c.driftState==='COUNTERSTEER'?9:7),-2.9,2.9);
+ c.yaw=approach(c.yaw,steer,dt*15);
  c.a=angle(c.a+c.yaw*dt*Math.min(1,c.speed/45));
- const safeSpeed=near?yieldToCourier(c,player,c.target):c.target;
- c.speed=approach(c.speed,safeSpeed,dt*(safeSpeed<c.speed?(c.emergency||safeSpeed<c.target?620:style.brake):style.accel));
- c.motion=angle(c.motion+angle(c.a-c.motion)*(1-Math.exp(-dt*(1.9+17*c.grip*c.grip))));
+ const aligned=Math.max(.4,Math.cos(error));
+ const trackingLimit=c.target*aligned;
+ const safeSpeed=near?yieldToCourier(c,player,trackingLimit):trackingLimit;
+ c.speed=approach(c.speed,safeSpeed,dt*(safeSpeed<c.speed?(c.emergency||safeSpeed<trackingLimit?620:style.brake):style.accel));
+ const frontForce=clamp(turnRate-angle(c.a-c.motion)*tireRate,-1.55,1.55);
+ c.motion=angle(c.motion+angle(c.a-c.motion)*(1-Math.exp(-dt*tireRate))+frontForce*dt*.72);
  c.slip=angle(c.a-c.motion);c.sideSpeed=c.speed*Math.sin(c.slip);
  c.vx=c.speed*Math.cos(c.motion);c.vy=c.speed*Math.sin(c.motion);
  c.x+=c.vx*dt;c.y+=c.vy*dt;
